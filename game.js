@@ -1,21 +1,36 @@
-// game.js
-// Stickman Fight - client
-// PC + mobile controls, canvas renderer, effects and WebSocket multiplayer.
+const canvas =
+  document.getElementById(
+    "gameCanvas"
+  );
 
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+const ctx =
+  canvas.getContext("2d");
 
-const socketUrl =
-  `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
 
-let socket = null;
-let role = null;
-let roomCode = "";
-let state = null;
-let lastFrame = performance.now();
+/* =====================================================
+   CONSTANTS
+===================================================== */
 
 const WORLD_W = 1200;
 const WORLD_H = 600;
+
+let socket = null;
+
+let role = null;
+let roomCode = "";
+
+let state = null;
+
+let lastFrame =
+  performance.now();
+
+let previousCanvasWidth = 0;
+let previousCanvasHeight = 0;
+
+
+/* =====================================================
+   INPUT
+===================================================== */
 
 const input = {
   left: false,
@@ -24,214 +39,477 @@ const input = {
   block: false
 };
 
+
+/* =====================================================
+   VISUAL EFFECTS
+===================================================== */
+
 const visuals = [];
 
-const $ = (id) => document.getElementById(id);
 
-const createBtn = $("createBtn");
-const showJoinBtn = $("showJoinBtn");
-const joinBtn = $("joinBtn");
-const roomInput = $("roomInput");
-const joinBox = $("joinBox");
-const roomInfo = $("roomInfo");
-const roomCodeEl = $("roomCode");
-const copyBtn = $("copyBtn");
-const statusEl = $("status");
-const connectionEl = $("connection");
+/* =====================================================
+   ELEMENTS
+===================================================== */
 
-const lobby = $("lobby");
-const game = $("game");
+const $ = (id) =>
+  document.getElementById(id);
 
-const roleEl = $("role");
-const timerEl = $("timer");
-const statusGameEl = $("gameStatus");
+const createBtn =
+  $("createBtn");
 
-const p1Hp = $("p1Hp");
-const p2Hp = $("p2Hp");
-const p1HpText = $("p1HpText");
-const p2HpText = $("p2HpText");
+const showJoinBtn =
+  $("showJoinBtn");
 
-const winOverlay = $("winOverlay");
-const winnerText = $("winnerText");
-const rematchBtn = $("rematchBtn");
+const joinBtn =
+  $("joinBtn");
+
+const roomInput =
+  $("roomInput");
+
+const joinBox =
+  $("joinBox");
+
+const roomInfo =
+  $("roomInfo");
+
+const roomCodeEl =
+  $("roomCode");
+
+const copyBtn =
+  $("copyBtn");
+
+const statusEl =
+  $("status");
+
+const connectionEl =
+  $("connection");
+
+const lobby =
+  $("lobby");
+
+const game =
+  $("game");
+
+const roleEl =
+  $("role");
+
+const timerEl =
+  $("timer");
+
+const gameStatusEl =
+  $("gameStatus");
+
+const p1Hp =
+  $("p1Hp");
+
+const p2Hp =
+  $("p2Hp");
+
+const p1HpText =
+  $("p1HpText");
+
+const p2HpText =
+  $("p2HpText");
+
+const winOverlay =
+  $("winOverlay");
+
+const winnerText =
+  $("winnerText");
+
+const rematchBtn =
+  $("rematchBtn");
 
 
-// --------------------------------------------------
-// WEBSOCKET
-// --------------------------------------------------
+/* =====================================================
+   WEBSOCKET
+===================================================== */
+
+const socketUrl =
+  `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
+
 
 function connect() {
-  socket = new WebSocket(socketUrl);
 
-  socket.addEventListener("open", () => {
-    connectionEl.textContent = "● ONLINE";
-    connectionEl.classList.add("online");
-  });
+  socket =
+    new WebSocket(
+      socketUrl
+    );
 
-  socket.addEventListener("close", () => {
-    connectionEl.textContent = "● OFFLINE";
-    connectionEl.classList.remove("online");
 
-    statusEl.textContent =
-      "Connection lost. Refresh the page to reconnect.";
+  socket.addEventListener(
+    "open",
+    () => {
 
-    statusGameEl.textContent = "Disconnected";
-  });
+      connectionEl.textContent =
+        "● ONLINE";
 
-  socket.addEventListener("error", () => {
-    connectionEl.textContent = "Connection error";
-  });
+      connectionEl.classList.add(
+        "online"
+      );
 
-  socket.addEventListener("message", (event) => {
-    let msg;
+      statusEl.textContent =
+        "Connected. Create or join a room.";
 
-    try {
-      msg = JSON.parse(event.data);
-    } catch {
-      return;
     }
+  );
 
-    handleMessage(msg);
-  });
+
+  socket.addEventListener(
+    "close",
+    () => {
+
+      connectionEl.textContent =
+        "● OFFLINE";
+
+      connectionEl.classList.remove(
+        "online"
+      );
+
+      statusEl.textContent =
+        "Connection lost. Refresh the page.";
+
+      gameStatusEl.textContent =
+        "OFFLINE";
+
+    }
+  );
+
+
+  socket.addEventListener(
+    "error",
+    () => {
+
+      connectionEl.textContent =
+        "CONNECTION ERROR";
+
+    }
+  );
+
+
+  socket.addEventListener(
+    "message",
+    (event) => {
+
+      let msg;
+
+      try {
+        msg =
+          JSON.parse(
+            event.data
+          );
+      } catch {
+        return;
+      }
+
+      handleMessage(msg);
+
+    }
+  );
+
 }
 
+
 function send(data) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
+
+  if (
+    !socket ||
+    socket.readyState !==
+      WebSocket.OPEN
+  ) {
     return;
   }
 
-  socket.send(JSON.stringify(data));
+  socket.send(
+    JSON.stringify(data)
+  );
+
 }
 
+
+/* =====================================================
+   SERVER MESSAGES
+===================================================== */
+
 function handleMessage(msg) {
+
   switch (msg.type) {
+
     case "welcome":
-      role = msg.role;
-      roomCode = msg.code;
 
-      roomCodeEl.textContent = roomCode;
-      roleEl.textContent = role;
+      role =
+        msg.role;
 
-      roomInfo.hidden = false;
-      createBtn.disabled = true;
-      showJoinBtn.disabled = true;
+      roomCode =
+        msg.code;
+
+      roomCodeEl.textContent =
+        roomCode;
+
+      roleEl.textContent =
+        role;
+
+      roomInfo.hidden =
+        false;
+
+      createBtn.disabled =
+        true;
+
+      showJoinBtn.disabled =
+        true;
 
       statusEl.textContent =
         role === "P1"
           ? "Room created. Waiting for Player 2..."
-          : "Joined room. Waiting for match...";
+          : "Joined room. Waiting for Player 2...";
 
       break;
+
 
     case "room":
-      roomCode = msg.code || roomCode;
-      roomCodeEl.textContent = roomCode;
+
+      roomCode =
+        msg.code ||
+        roomCode;
+
+      roomCodeEl.textContent =
+        roomCode;
+
 
       if (msg.started) {
-        lobby.hidden = true;
-        game.hidden = false;
 
-        statusGameEl.textContent = "FIGHT!";
+        lobby.hidden =
+          true;
+
+        game.hidden =
+          false;
+
+        gameStatusEl.textContent =
+          "FIGHT!";
+
       } else {
-        lobby.hidden = false;
-        game.hidden = true;
 
-        statusEl.textContent =
+        lobby.hidden =
+          false;
+
+        game.hidden =
+          true;
+
+
+        if (
+          msg.winner
+        ) {
+
+          statusEl.textContent =
+            "Match finished. Rematch from the game screen.";
+
+        } else if (
           msg.connected >= 2
-            ? "Both players connected. Starting..."
-            : "Waiting for Player 2...";
+        ) {
+
+          statusEl.textContent =
+            "Both players connected.";
+
+        } else {
+
+          statusEl.textContent =
+            "Waiting for Player 2...";
+
+        }
+
       }
 
       break;
+
 
     case "state":
-      state = msg;
 
-      if (msg.started) {
-        lobby.hidden = true;
-        game.hidden = false;
+      state =
+        msg;
+
+      if (
+        msg.started
+      ) {
+
+        lobby.hidden =
+          true;
+
+        game.hidden =
+          false;
+
       }
+
 
       updateHUD();
-      processEvents(msg.events || []);
 
-      if (msg.winner) {
-        showWinner(msg.winner);
+      processEvents(
+        msg.events || []
+      );
+
+
+      if (
+        msg.winner
+      ) {
+
+        showWinner(
+          msg.winner
+        );
+
       } else {
-        winOverlay.hidden = true;
+
+        winOverlay.hidden =
+          true;
+
       }
 
       break;
 
+
     case "error":
-      statusEl.textContent = msg.message || "Error";
-      statusGameEl.textContent = msg.message || "Error";
+
+      statusEl.textContent =
+        msg.message ||
+        "Error";
+
+      gameStatusEl.textContent =
+        msg.message ||
+        "Error";
+
       break;
+
   }
+
 }
 
 
-// --------------------------------------------------
-// LOBBY
-// --------------------------------------------------
+/* =====================================================
+   LOBBY
+===================================================== */
 
-createBtn.addEventListener("click", () => {
-  send({ type: "create" });
-});
-
-showJoinBtn.addEventListener("click", () => {
-  joinBox.hidden = !joinBox.hidden;
-
-  if (!joinBox.hidden) {
-    roomInput.focus();
+createBtn.addEventListener(
+  "click",
+  () => {
+    send({
+      type: "create"
+    });
   }
-});
+);
 
-joinBtn.addEventListener("click", () => {
-  const code = roomInput.value.trim().toUpperCase();
 
-  if (!code) {
-    statusEl.textContent = "Enter a room code.";
-    return;
+showJoinBtn.addEventListener(
+  "click",
+  () => {
+
+    joinBox.hidden =
+      !joinBox.hidden;
+
+    if (
+      !joinBox.hidden
+    ) {
+      roomInput.focus();
+    }
+
   }
+);
 
-  send({
-    type: "join",
-    code
-  });
-});
 
-roomInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    joinBtn.click();
+joinBtn.addEventListener(
+  "click",
+  () => {
+
+    const code =
+      roomInput.value
+        .trim()
+        .toUpperCase();
+
+    if (!code) {
+
+      statusEl.textContent =
+        "Enter a room code.";
+
+      return;
+    }
+
+    send({
+      type: "join",
+      code
+    });
+
   }
-});
+);
 
-copyBtn.addEventListener("click", async () => {
-  if (!roomCode) return;
 
-  try {
-    await navigator.clipboard.writeText(roomCode);
-    copyBtn.textContent = "Copied!";
+roomInput.addEventListener(
+  "keydown",
+  (event) => {
 
-    setTimeout(() => {
-      copyBtn.textContent = "Copy";
-    }, 1000);
-  } catch {
-    statusEl.textContent = `Room code: ${roomCode}`;
+    if (
+      event.key === "Enter"
+    ) {
+      joinBtn.click();
+    }
+
   }
-});
-
-rematchBtn.addEventListener("click", () => {
-  send({ type: "rematch" });
-  winnerText.textContent = "Waiting for opponent...";
-  rematchBtn.disabled = true;
-});
+);
 
 
-// --------------------------------------------------
-// KEYBOARD
-// --------------------------------------------------
+copyBtn.addEventListener(
+  "click",
+  async () => {
+
+    if (!roomCode) {
+      return;
+    }
+
+    try {
+
+      await navigator.clipboard.writeText(
+        roomCode
+      );
+
+      copyBtn.textContent =
+        "COPIED!";
+
+      setTimeout(
+        () => {
+          copyBtn.textContent =
+            "COPY";
+        },
+        1000
+      );
+
+    } catch {
+
+      statusEl.textContent =
+        `ROOM CODE: ${roomCode}`;
+
+    }
+
+  }
+);
+
+
+rematchBtn.addEventListener(
+  "click",
+  () => {
+
+    send({
+      type: "rematch"
+    });
+
+    winnerText.textContent =
+      "WAITING FOR OPPONENT...";
+
+    rematchBtn.disabled =
+      true;
+
+  }
+);
+
+
+/* =====================================================
+   PC KEYBOARD
+===================================================== */
 
 const keyMapP1 = {
   KeyA: "left",
@@ -247,189 +525,404 @@ const keyMapP2 = {
   KeyK: "block"
 };
 
+
 function getKeyMap() {
-  return role === "P2" ? keyMapP2 : keyMapP1;
+
+  return role === "P2"
+    ? keyMapP2
+    : keyMapP1;
+
 }
 
-function keyboardAction(code) {
+
+function getKeyboardAction(
+  code
+) {
+
   if (role === "P1") {
-    if (code === "KeyF") return "attack";
-    if (code === "KeyR") return "kick";
-    if (code === "Digit1") return "fire";
-    if (code === "Digit2") return "dash";
-    if (code === "Digit3") return "wind";
+
+    if (code === "KeyF")
+      return "attack";
+
+    if (code === "KeyR")
+      return "kick";
+
+    if (code === "Digit1")
+      return "fire";
+
+    if (code === "Digit2")
+      return "dash";
+
+    if (code === "Digit3")
+      return "wind";
   }
 
+
   if (role === "P2") {
-    if (code === "KeyL") return "attack";
-    if (code === "KeyO") return "kick";
-    if (code === "Digit8") return "fire";
-    if (code === "Digit9") return "dash";
-    if (code === "Digit0") return "wind";
+
+    if (code === "KeyL")
+      return "attack";
+
+    if (code === "KeyO")
+      return "kick";
+
+    if (code === "Digit8")
+      return "fire";
+
+    if (code === "Digit9")
+      return "dash";
+
+    if (code === "Digit0")
+      return "wind";
   }
 
   return null;
 }
 
-window.addEventListener("keydown", (event) => {
-  const map = getKeyMap();
 
-  if (map[event.code]) {
-    input[map[event.code]] = true;
-    event.preventDefault();
-  }
+window.addEventListener(
+  "keydown",
+  (event) => {
 
-  const action = keyboardAction(event.code);
+    const map =
+      getKeyMap();
 
-  if (action && !event.repeat) {
-    send({
-      type: "action",
-      action
-    });
+    if (
+      map[event.code]
+    ) {
 
-    event.preventDefault();
-  }
-});
+      input[
+        map[event.code]
+      ] = true;
 
-window.addEventListener("keyup", (event) => {
-  const map = getKeyMap();
+      event.preventDefault();
 
-  if (map[event.code]) {
-    input[map[event.code]] = false;
-    event.preventDefault();
-  }
-});
-
-window.addEventListener("blur", () => {
-  input.left = false;
-  input.right = false;
-  input.jump = false;
-  input.block = false;
-
-  send({
-    type: "input",
-    input
-  });
-});
-
-
-// --------------------------------------------------
-// SEND INPUT
-// --------------------------------------------------
-
-setInterval(() => {
-  send({
-    type: "input",
-    input: {
-      left: input.left,
-      right: input.right,
-      jump: input.jump,
-      block: input.block
     }
-  });
-}, 50);
 
 
-// --------------------------------------------------
-// MOBILE CONTROLS
-// --------------------------------------------------
+    const action =
+      getKeyboardAction(
+        event.code
+      );
 
-document.querySelectorAll("[data-input]").forEach((button) => {
-  const key = button.dataset.input;
+    if (
+      action &&
+      !event.repeat
+    ) {
 
-  const press = (event) => {
-    event.preventDefault();
+      send({
+        type: "action",
+        action
+      });
 
-    try {
-      button.setPointerCapture(event.pointerId);
-    } catch {}
+      event.preventDefault();
 
-    input[key] = true;
-    button.classList.add("pressed");
-  };
+    }
 
-  const release = (event) => {
-    event.preventDefault();
+  }
+);
 
-    input[key] = false;
-    button.classList.remove("pressed");
-  };
 
-  button.addEventListener("pointerdown", press);
-  button.addEventListener("pointerup", release);
-  button.addEventListener("pointercancel", release);
-  button.addEventListener("pointerleave", release);
-});
+window.addEventListener(
+  "keyup",
+  (event) => {
 
-document.querySelectorAll("[data-action]").forEach((button) => {
-  button.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
+    const map =
+      getKeyMap();
 
-    button.classList.add("pressed");
+    if (
+      map[event.code]
+    ) {
+
+      input[
+        map[event.code]
+      ] = false;
+
+      event.preventDefault();
+
+    }
+
+  }
+);
+
+
+window.addEventListener(
+  "blur",
+  () => {
+
+    input.left = false;
+    input.right = false;
+    input.jump = false;
+    input.block = false;
 
     send({
-      type: "action",
-      action: button.dataset.action
+      type: "input",
+      input
     });
 
-    setTimeout(() => {
-      button.classList.remove("pressed");
-    }, 120);
-  });
-});
+  }
+);
 
 
-// --------------------------------------------------
-// HUD
-// --------------------------------------------------
+/* =====================================================
+   INPUT SEND LOOP
+===================================================== */
+
+setInterval(
+  () => {
+
+    send({
+      type: "input",
+
+      input: {
+        left: input.left,
+        right: input.right,
+        jump: input.jump,
+        block: input.block
+      }
+
+    });
+
+  },
+  50
+);
+
+
+/* =====================================================
+   MOBILE CONTROLS
+===================================================== */
+
+document
+  .querySelectorAll(
+    "[data-input]"
+  )
+  .forEach(
+    (button) => {
+
+      const key =
+        button.dataset.input;
+
+
+      const press =
+        (event) => {
+
+          event.preventDefault();
+
+          try {
+            button.setPointerCapture(
+              event.pointerId
+            );
+          } catch {}
+
+          input[key] =
+            true;
+
+          button.classList.add(
+            "pressed"
+          );
+
+        };
+
+
+      const release =
+        (event) => {
+
+          event.preventDefault();
+
+          input[key] =
+            false;
+
+          button.classList.remove(
+            "pressed"
+          );
+
+        };
+
+
+      button.addEventListener(
+        "pointerdown",
+        press
+      );
+
+      button.addEventListener(
+        "pointerup",
+        release
+      );
+
+      button.addEventListener(
+        "pointercancel",
+        release
+      );
+
+      button.addEventListener(
+        "pointerleave",
+        release
+      );
+
+    }
+  );
+
+
+document
+  .querySelectorAll(
+    "[data-action]"
+  )
+  .forEach(
+    (button) => {
+
+      button.addEventListener(
+        "pointerdown",
+        (event) => {
+
+          event.preventDefault();
+
+          button.classList.add(
+            "pressed"
+          );
+
+          send({
+            type: "action",
+            action:
+              button.dataset.action
+          });
+
+          setTimeout(
+            () => {
+              button.classList.remove(
+                "pressed"
+              );
+            },
+            120
+          );
+
+        }
+      );
+
+    }
+  );
+
+
+/* =====================================================
+   HUD
+===================================================== */
 
 function updateHUD() {
-  if (!state || !state.players) return;
 
-  const p1 = state.players.P1;
-  const p2 = state.players.P2;
+  if (
+    !state ||
+    !state.players
+  ) {
+    return;
+  }
+
+  const p1 =
+    state.players.P1;
+
+  const p2 =
+    state.players.P2;
+
 
   if (p1) {
-    const hp = Math.max(0, Math.min(100, p1.hp));
-    p1Hp.style.width = `${hp}%`;
-    p1HpText.textContent = `${Math.ceil(hp)} HP`;
+
+    const hp =
+      Math.max(
+        0,
+        Math.min(
+          100,
+          Number(p1.hp)
+        )
+      );
+
+    p1Hp.style.width =
+      `${hp}%`;
+
+    p1HpText.textContent =
+      `${Math.ceil(hp)} HP`;
+
   }
+
 
   if (p2) {
-    const hp = Math.max(0, Math.min(100, p2.hp));
-    p2Hp.style.width = `${hp}%`;
-    p2HpText.textContent = `${Math.ceil(hp)} HP`;
+
+    const hp =
+      Math.max(
+        0,
+        Math.min(
+          100,
+          Number(p2.hp)
+        )
+      );
+
+    p2Hp.style.width =
+      `${hp}%`;
+
+    p2HpText.textContent =
+      `${Math.ceil(hp)} HP`;
+
   }
 
+
   timerEl.textContent =
-    state.time !== undefined
-      ? Math.ceil(state.time)
-      : "60";
+    Math.ceil(
+      Number(state.time || 0)
+    );
+
 
   updateCooldownButtons();
 
-  if (state.started) {
-    statusGameEl.textContent =
+
+  if (
+    state.started
+  ) {
+
+    gameStatusEl.textContent =
       role === "P1"
-        ? "You are Player 1"
-        : "You are Player 2";
+        ? "YOU ARE PLAYER 1"
+        : "YOU ARE PLAYER 2";
+
   }
+
 }
 
+
 function updateCooldownButtons() {
-  if (!state || !role) return;
 
-  const player = state.players?.[role];
+  if (
+    !state ||
+    !role
+  ) {
+    return;
+  }
 
-  if (!player) return;
+  const player =
+    state.players?.[role];
 
-  const cooldowns = player.cooldowns || {};
+  if (!player) {
+    return;
+  }
+
+
+  const cooldowns =
+    player.cooldowns || {};
+
 
   const buttons = {
-    fire: document.querySelector('[data-action="fire"]'),
-    dash: document.querySelector('[data-action="dash"]'),
-    wind: document.querySelector('[data-action="wind"]')
+    fire:
+      document.querySelector(
+        '[data-action="fire"]'
+      ),
+
+    dash:
+      document.querySelector(
+        '[data-action="dash"]'
+      ),
+
+    wind:
+      document.querySelector(
+        '[data-action="wind"]'
+      )
   };
+
 
   const names = {
     fire: "🔥 FIRE",
@@ -437,78 +930,168 @@ function updateCooldownButtons() {
     wind: "🌪 WIND"
   };
 
-  for (const key of Object.keys(buttons)) {
-    const button = buttons[key];
 
-    if (!button) continue;
+  for (
+    const key of Object.keys(
+      buttons
+    )
+  ) {
 
-    const cd = Number(cooldowns[key] || 0);
+    const button =
+      buttons[key];
+
+    if (!button) {
+      continue;
+    }
+
+    const cd =
+      Number(
+        cooldowns[key] || 0
+      );
+
 
     if (cd > 0) {
-      button.textContent = `${names[key]} ${cd.toFixed(1)}`;
-      button.classList.add("cooldown");
+
+      button.textContent =
+        `${names[key]} ${cd.toFixed(1)}`;
+
+      button.classList.add(
+        "cooldown"
+      );
+
     } else {
-      button.textContent = names[key];
-      button.classList.remove("cooldown");
+
+      button.textContent =
+        names[key];
+
+      button.classList.remove(
+        "cooldown"
+      );
+
     }
+
   }
+
 }
 
-function showWinner(winner) {
-  winOverlay.hidden = false;
-  rematchBtn.disabled = false;
 
-  if (winner === "draw") {
-    winnerText.textContent = "DRAW!";
+function showWinner(
+  winner
+) {
+
+  winOverlay.hidden =
+    false;
+
+  rematchBtn.disabled =
+    false;
+
+
+  if (
+    winner === "draw"
+  ) {
+
+    winnerText.textContent =
+      "DRAW!";
+
     return;
   }
 
-  if (winner === role) {
-    winnerText.textContent = "YOU WIN!";
-  } else {
-    winnerText.textContent = "YOU LOSE!";
-  }
+
+  winnerText.textContent =
+    winner === role
+      ? "YOU WIN!"
+      : "YOU LOSE!";
+
 }
 
 
-// --------------------------------------------------
-// CANVAS RESIZE
-// --------------------------------------------------
+/* =====================================================
+   CANVAS RESIZE
+===================================================== */
 
 function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
 
-  const width = Math.max(1, rect.width);
-  const height = Math.max(1, rect.height);
+  const rect =
+    canvas.getBoundingClientRect();
 
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width =
+    Math.max(
+      1,
+      rect.width
+    );
 
-  canvas.width = Math.floor(width * dpr);
-  canvas.height = Math.floor(height * dpr);
+  const height =
+    Math.max(
+      1,
+      rect.height
+    );
 
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
+  const dpr =
+    Math.min(
+      window.devicePixelRatio || 1,
+      2
+    );
 
-window.addEventListener("resize", resizeCanvas);
 
-resizeCanvas();
+  canvas.width =
+    Math.floor(
+      width * dpr
+    );
+
+  canvas.height =
+    Math.floor(
+      height * dpr
+    );
 
 
-// --------------------------------------------------
-// WORLD TRANSFORM
-// --------------------------------------------------
-
-function setupWorldTransform() {
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
-
-  const scale = Math.min(
-    width / WORLD_W,
-    height / WORLD_H
+  ctx.setTransform(
+    dpr,
+    0,
+    0,
+    dpr,
+    0,
+    0
   );
 
-  const offsetX = (width - WORLD_W * scale) / 2;
-  const offsetY = (height - WORLD_H * scale) / 2;
+}
+
+
+window.addEventListener(
+  "resize",
+  resizeCanvas
+);
+
+
+/* =====================================================
+   WORLD TRANSFORM
+===================================================== */
+
+function setupWorldTransform() {
+
+  const width =
+    canvas.clientWidth;
+
+  const height =
+    canvas.clientHeight;
+
+
+  const scale =
+    Math.min(
+      width / WORLD_W,
+      height / WORLD_H
+    );
+
+
+  const offsetX =
+    (width -
+      WORLD_W * scale) /
+    2;
+
+  const offsetY =
+    (height -
+      WORLD_H * scale) /
+    2;
+
 
   ctx.setTransform(
     scale,
@@ -518,132 +1101,310 @@ function setupWorldTransform() {
     offsetX,
     offsetY
   );
+
 }
 
 
-// --------------------------------------------------
-// DRAW ARENA
-// --------------------------------------------------
+/* =====================================================
+   ARENA
+===================================================== */
 
 function drawArena() {
-  // Background
-  const gradient = ctx.createLinearGradient(
+
+  const gradient =
+    ctx.createLinearGradient(
+      0,
+      0,
+      0,
+      WORLD_H
+    );
+
+  gradient.addColorStop(
+    0,
+    "#10162b"
+  );
+
+  gradient.addColorStop(
+    0.6,
+    "#171d38"
+  );
+
+  gradient.addColorStop(
+    1,
+    "#090c18"
+  );
+
+
+  ctx.fillStyle =
+    gradient;
+
+  ctx.fillRect(
     0,
     0,
-    0,
+    WORLD_W,
     WORLD_H
   );
 
-  gradient.addColorStop(0, "#10162b");
-  gradient.addColorStop(0.6, "#171d38");
-  gradient.addColorStop(1, "#090c18");
 
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  /* Moon */
 
-  // Moon
   ctx.beginPath();
-  ctx.arc(1000, 100, 55, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
+
+  ctx.arc(
+    1000,
+    100,
+    55,
+    0,
+    Math.PI * 2
+  );
+
+  ctx.fillStyle =
+    "rgba(255,255,255,0.12)";
+
   ctx.fill();
 
-  // Stars
-  for (let i = 0; i < 60; i++) {
-    const x = (i * 197) % WORLD_W;
-    const y = (i * 83) % 350;
 
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.fillRect(x, y, 2, 2);
+  /* Stars */
+
+  for (
+    let i = 0;
+    i < 60;
+    i++
+  ) {
+
+    const x =
+      (i * 197) %
+      WORLD_W;
+
+    const y =
+      (i * 83) %
+      350;
+
+    ctx.fillStyle =
+      "rgba(255,255,255,0.35)";
+
+    ctx.fillRect(
+      x,
+      y,
+      2,
+      2
+    );
+
   }
 
-  // Arena grid
+
+  /* Grid */
+
   ctx.lineWidth = 1;
-  ctx.strokeStyle = "rgba(255,255,255,0.045)";
 
-  for (let x = 0; x <= WORLD_W; x += 60) {
+  ctx.strokeStyle =
+    "rgba(255,255,255,0.045)";
+
+
+  for (
+    let x = 0;
+    x <= WORLD_W;
+    x += 60
+  ) {
+
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, WORLD_H);
+
+    ctx.moveTo(
+      x,
+      0
+    );
+
+    ctx.lineTo(
+      x,
+      WORLD_H
+    );
+
     ctx.stroke();
+
   }
 
-  for (let y = 0; y <= WORLD_H; y += 60) {
+
+  for (
+    let y = 0;
+    y <= WORLD_H;
+    y += 60
+  ) {
+
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(WORLD_W, y);
+
+    ctx.moveTo(
+      0,
+      y
+    );
+
+    ctx.lineTo(
+      WORLD_W,
+      y
+    );
+
     ctx.stroke();
+
   }
 
-  // Ground glow
-  const groundY = 510;
 
-  const groundGradient = ctx.createLinearGradient(
+  /* Ground */
+
+  const groundY =
+    510;
+
+
+  const groundGradient =
+    ctx.createLinearGradient(
+      0,
+      groundY,
+      0,
+      WORLD_H
+    );
+
+  groundGradient.addColorStop(
     0,
-    groundY,
-    0,
-    WORLD_H
+    "#242b4b"
   );
 
-  groundGradient.addColorStop(0, "#242b4b");
-  groundGradient.addColorStop(1, "#0a0d19");
+  groundGradient.addColorStop(
+    1,
+    "#0a0d19"
+  );
 
-  ctx.fillStyle = groundGradient;
-  ctx.fillRect(0, groundY, WORLD_W, WORLD_H - groundY);
 
-  // Ground line
+  ctx.fillStyle =
+    groundGradient;
+
+  ctx.fillRect(
+    0,
+    groundY,
+    WORLD_W,
+    WORLD_H -
+      groundY
+  );
+
+
+  /* Ground line */
+
   ctx.beginPath();
-  ctx.moveTo(0, groundY);
-  ctx.lineTo(WORLD_W, groundY);
+
+  ctx.moveTo(
+    0,
+    groundY
+  );
+
+  ctx.lineTo(
+    WORLD_W,
+    groundY
+  );
 
   ctx.lineWidth = 5;
-  ctx.strokeStyle = "#7781a8";
+
+  ctx.strokeStyle =
+    "#7781a8";
+
   ctx.stroke();
 
-  // Center line
+
+  /* Center line */
+
   ctx.beginPath();
-  ctx.moveTo(WORLD_W / 2, groundY - 30);
-  ctx.lineTo(WORLD_W / 2, groundY + 5);
+
+  ctx.moveTo(
+    WORLD_W / 2,
+    groundY - 30
+  );
+
+  ctx.lineTo(
+    WORLD_W / 2,
+    groundY + 5
+  );
 
   ctx.lineWidth = 3;
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+
+  ctx.strokeStyle =
+    "rgba(255,255,255,0.25)";
+
   ctx.stroke();
+
 }
 
 
-// --------------------------------------------------
-// STICKMAN
-// --------------------------------------------------
+/* =====================================================
+   STICKMAN
+===================================================== */
 
-function drawStickman(player) {
-  if (!player) return;
+function drawStickman(
+  player
+) {
 
-  // Important:
-  // server uses player.x/player.y as the FOOT position.
-  // Keep everything relative to that point.
-
-  const x = Number(player.x);
-  const y = Number(player.y);
-
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+  if (!player) {
     return;
   }
 
+
+  const x =
+    Number(player.x);
+
+  const y =
+    Number(player.y);
+
+
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y)
+  ) {
+    return;
+  }
+
+
   const facing =
-    Number(player.facing) < 0 ? -1 : 1;
+    Number(player.facing) < 0
+      ? -1
+      : 1;
 
-  const hp = Number(player.hp ?? 100);
+
+  const hp =
+    Number(
+      player.hp ?? 100
+    );
+
 
   ctx.save();
 
-  ctx.translate(x, y);
-  ctx.scale(facing, 1);
 
-  // Shadow
+  /*
+    IMPORTANT:
+
+    player.x = feet X
+    player.y = feet Y
+
+    Everything else is drawn upward
+    from that position.
+  */
+
+  ctx.translate(
+    x,
+    y
+  );
+
+  ctx.scale(
+    facing,
+    1
+  );
+
+
+  /* Shadow */
+
   ctx.save();
 
-  ctx.scale(1, 0.25);
+  ctx.scale(
+    1,
+    0.25
+  );
 
   ctx.beginPath();
+
   ctx.ellipse(
     0,
     0,
@@ -654,32 +1415,57 @@ function drawStickman(player) {
     Math.PI * 2
   );
 
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillStyle =
+    "rgba(0,0,0,0.35)";
+
   ctx.fill();
 
   ctx.restore();
 
-  // Dash afterimage
-  if (player.dashTimer > 0) {
-    for (let i = 1; i <= 4; i++) {
-      ctx.globalAlpha = 0.12 * (5 - i);
 
-      ctx.strokeStyle = "#77ddff";
+  /* Dash afterimage */
+
+  if (
+    Number(player.dashTimer || 0) > 0
+  ) {
+
+    for (
+      let i = 1;
+      i <= 4;
+      i++
+    ) {
+
+      ctx.globalAlpha =
+        0.12 *
+        (5 - i);
+
+      ctx.strokeStyle =
+        "#77ddff";
+
       ctx.lineWidth = 7;
 
+
       ctx.beginPath();
-      ctx.moveTo(-30 - i * 16, -55);
-      ctx.lineTo(-80 - i * 20, -55);
+
+      ctx.moveTo(
+        -30 - i * 16,
+        -55
+      );
+
+      ctx.lineTo(
+        -80 - i * 20,
+        -55
+      );
 
       ctx.stroke();
+
     }
 
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha =
+      1;
+
   }
 
-  // Body styling
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
 
   const bodyColor =
     player.role === "P1"
@@ -691,14 +1477,34 @@ function drawStickman(player) {
       ? "#72c8ff"
       : "#ff728b";
 
-  ctx.shadowBlur = 14;
-  ctx.shadowColor = glowColor;
 
-  ctx.strokeStyle = bodyColor;
-  ctx.fillStyle = bodyColor;
+  ctx.lineCap =
+    "round";
 
-  // HEAD
+  ctx.lineJoin =
+    "round";
+
+
+  ctx.strokeStyle =
+    bodyColor;
+
+  ctx.fillStyle =
+    bodyColor;
+
+
+  /* Glow */
+
+  ctx.shadowBlur =
+    14;
+
+  ctx.shadowColor =
+    glowColor;
+
+
+  /* HEAD */
+
   ctx.beginPath();
+
   ctx.arc(
     0,
     -92,
@@ -709,78 +1515,197 @@ function drawStickman(player) {
 
   ctx.fill();
 
-  // Face
-  ctx.shadowBlur = 0;
 
-  ctx.strokeStyle = "#080a12";
+  /* Eye */
+
+  ctx.shadowBlur =
+    0;
+
+  ctx.strokeStyle =
+    "#080a12";
+
   ctx.lineWidth = 4;
 
   ctx.beginPath();
-  ctx.moveTo(7, -96);
-  ctx.lineTo(14, -94);
+
+  ctx.moveTo(
+    7,
+    -96
+  );
+
+  ctx.lineTo(
+    14,
+    -94
+  );
+
   ctx.stroke();
 
-  // BODY
-  ctx.strokeStyle = bodyColor;
+
+  /* BODY */
+
+  ctx.strokeStyle =
+    bodyColor;
+
   ctx.lineWidth = 9;
 
   ctx.beginPath();
-  ctx.moveTo(0, -70);
-  ctx.lineTo(0, -28);
+
+  ctx.moveTo(
+    0,
+    -70
+  );
+
+  ctx.lineTo(
+    0,
+    -28
+  );
+
   ctx.stroke();
 
-  // Legs
+
+  /* LEFT LEG */
+
   ctx.lineWidth = 8;
 
   ctx.beginPath();
-  ctx.moveTo(0, -28);
-  ctx.lineTo(-20, 0);
-  ctx.lineTo(-30, 0);
+
+  ctx.moveTo(
+    0,
+    -28
+  );
+
+  ctx.lineTo(
+    -20,
+    0
+  );
+
+  ctx.lineTo(
+    -30,
+    0
+  );
+
   ctx.stroke();
+
+
+  /* RIGHT LEG */
 
   ctx.beginPath();
-  ctx.moveTo(0, -28);
-  ctx.lineTo(20, 0);
-  ctx.lineTo(32, 0);
+
+  ctx.moveTo(
+    0,
+    -28
+  );
+
+  ctx.lineTo(
+    20,
+    0
+  );
+
+  ctx.lineTo(
+    32,
+    0
+  );
+
   ctx.stroke();
 
-  // Arms
-  const attacking =
-    Number(player.attackTimer || 0) > 0;
 
-  if (attacking) {
-    // Punching arm
+  const attacking =
+    Number(
+      player.attackTimer || 0
+    ) > 0;
+
+
+  /* ARMS */
+
+  if (
+    attacking
+  ) {
+
     ctx.lineWidth = 9;
 
     ctx.beginPath();
-    ctx.moveTo(0, -62);
-    ctx.lineTo(30, -52);
-    ctx.lineTo(68, -55);
+
+    ctx.moveTo(
+      0,
+      -62
+    );
+
+    ctx.lineTo(
+      30,
+      -52
+    );
+
+    ctx.lineTo(
+      68,
+      -55
+    );
+
     ctx.stroke();
 
-    // Fist
+
     ctx.beginPath();
-    ctx.arc(73, -55, 9, 0, Math.PI * 2);
+
+    ctx.arc(
+      73,
+      -55,
+      9,
+      0,
+      Math.PI * 2
+    );
+
     ctx.fill();
-  } else if (player.blocking) {
-    // Blocking arm
+
+  }
+
+
+  else if (
+    player.blocking
+  ) {
+
     ctx.lineWidth = 8;
 
     ctx.beginPath();
-    ctx.moveTo(0, -62);
-    ctx.lineTo(32, -70);
-    ctx.lineTo(43, -42);
+
+    ctx.moveTo(
+      0,
+      -62
+    );
+
+    ctx.lineTo(
+      32,
+      -70
+    );
+
+    ctx.lineTo(
+      43,
+      -42
+    );
+
     ctx.stroke();
 
+
     ctx.beginPath();
-    ctx.arc(43, -42, 9, 0, Math.PI * 2);
+
+    ctx.arc(
+      43,
+      -42,
+      9,
+      0,
+      Math.PI * 2
+    );
+
     ctx.fill();
 
-    // Shield
-    ctx.strokeStyle = "rgba(130,220,255,0.9)";
+
+    /* Shield */
+
+    ctx.strokeStyle =
+      "rgba(130,220,255,0.9)";
+
     ctx.lineWidth = 5;
 
     ctx.beginPath();
+
     ctx.arc(
       40,
       -60,
@@ -790,41 +1715,90 @@ function drawStickman(player) {
     );
 
     ctx.stroke();
-  } else {
-    // Normal arms
+
+  }
+
+
+  else {
+
     ctx.lineWidth = 8;
 
     ctx.beginPath();
-    ctx.moveTo(0, -62);
-    ctx.lineTo(-30, -43);
-    ctx.lineTo(-45, -20);
+
+    ctx.moveTo(
+      0,
+      -62
+    );
+
+    ctx.lineTo(
+      -30,
+      -43
+    );
+
+    ctx.lineTo(
+      -45,
+      -20
+    );
+
     ctx.stroke();
+
 
     ctx.beginPath();
-    ctx.moveTo(0, -62);
-    ctx.lineTo(30, -43);
-    ctx.lineTo(45, -20);
+
+    ctx.moveTo(
+      0,
+      -62
+    );
+
+    ctx.lineTo(
+      30,
+      -43
+    );
+
+    ctx.lineTo(
+      45,
+      -20
+    );
+
     ctx.stroke();
+
   }
 
-  ctx.shadowBlur = 0;
 
-  // Player label
-  ctx.font = "bold 16px Arial";
-  ctx.textAlign = "center";
+  ctx.shadowBlur =
+    0;
 
-  ctx.fillStyle = "#ffffff";
+
+  /* PLAYER LABEL */
+
+  ctx.font =
+    "bold 16px Arial";
+
+  ctx.textAlign =
+    "center";
+
+  ctx.fillStyle =
+    "#ffffff";
+
   ctx.fillText(
     player.role,
     0,
-    -125
+    -128
   );
 
-  // Small HP bar above character
-  const barWidth = 70;
-  const barHeight = 7;
 
-  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  /* MINI HP BAR */
+
+  const barWidth =
+    70;
+
+  const barHeight =
+    7;
+
+
+  ctx.fillStyle =
+    "rgba(0,0,0,0.5)";
+
   ctx.fillRect(
     -barWidth / 2,
     -115,
@@ -832,48 +1806,92 @@ function drawStickman(player) {
     barHeight
   );
 
-  ctx.fillStyle = bodyColor;
+
+  ctx.fillStyle =
+    bodyColor;
+
   ctx.fillRect(
     -barWidth / 2,
     -115,
-    barWidth * Math.max(0, hp) / 100,
+    barWidth *
+      Math.max(
+        0,
+        hp
+      ) /
+      100,
     barHeight
   );
 
+
   ctx.restore();
+
 }
 
 
-// --------------------------------------------------
-// PROJECTILES
-// --------------------------------------------------
+/* =====================================================
+   PROJECTILES
+===================================================== */
 
-function drawProjectile(projectile) {
-  if (!projectile) return;
+function drawProjectile(
+  projectile
+) {
 
-  const x = Number(projectile.x);
-  const y = Number(projectile.y);
-
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+  if (!projectile) {
     return;
   }
 
-  const direction =
-    Number(projectile.vx) < 0 ? -1 : 1;
 
-  if (projectile.kind === "wind") {
+  const x =
+    Number(projectile.x);
+
+  const y =
+    Number(projectile.y);
+
+
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y)
+  ) {
+    return;
+  }
+
+
+  const direction =
+    Number(projectile.vx) < 0
+      ? -1
+      : 1;
+
+
+  if (
+    projectile.kind === "wind"
+  ) {
+
     ctx.save();
 
-    ctx.translate(x, y);
-    ctx.scale(direction, 1);
+    ctx.translate(
+      x,
+      y
+    );
 
-    ctx.shadowBlur = 25;
-    ctx.shadowColor = "#8ff";
+    ctx.scale(
+      direction,
+      1
+    );
 
-    ctx.strokeStyle = "#b8ffff";
+    ctx.shadowBlur =
+      25;
+
+    ctx.shadowColor =
+      "#8ff";
+
+    ctx.strokeStyle =
+      "#b8ffff";
+
     ctx.lineWidth = 7;
 
+
     ctx.beginPath();
+
     ctx.arc(
       0,
       0,
@@ -884,15 +1902,18 @@ function drawProjectile(projectile) {
 
     ctx.stroke();
 
-    ctx.shadowBlur = 0;
+
+    ctx.shadowBlur =
+      0;
 
     ctx.restore();
 
     return;
   }
 
-  // Generic projectile
+
   ctx.beginPath();
+
   ctx.arc(
     x,
     y,
@@ -901,114 +1922,258 @@ function drawProjectile(projectile) {
     Math.PI * 2
   );
 
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle =
+    "#ffffff";
+
   ctx.fill();
+
 }
 
 
-// --------------------------------------------------
-// EFFECTS
-// --------------------------------------------------
+/* =====================================================
+   EFFECTS
+===================================================== */
 
-function processEvents(events) {
-  for (const event of events) {
-    spawnEffect(event);
+function processEvents(
+  events
+) {
+
+  for (
+    const event of events
+  ) {
+
+    spawnEffect(
+      event
+    );
+
   }
+
 }
 
-function spawnEffect(event) {
-  if (!event) return;
+
+function spawnEffect(
+  event
+) {
+
+  if (!event) {
+    return;
+  }
+
 
   const effect = {
-    type: event.type,
-    x: Number(event.x || 0),
-    y: Number(event.y || 0),
-    direction: Number(event.direction || 1),
+
+    type:
+      event.type,
+
+    x:
+      Number(
+        event.x || 0
+      ),
+
+    y:
+      Number(
+        event.y || 0
+      ),
+
+    direction:
+      Number(
+        event.direction || 1
+      ),
+
     life: 0.45,
+
     maxLife: 0.45,
+
     particles: []
+
   };
 
-  if (event.type === "hit") {
-    effect.life = 0.3;
-    effect.maxLife = 0.3;
 
-    for (let i = 0; i < 12; i++) {
+  if (
+    event.type === "hit"
+  ) {
+
+    effect.life =
+      0.3;
+
+    effect.maxLife =
+      0.3;
+
+
+    for (
+      let i = 0;
+      i < 12;
+      i++
+    ) {
+
       const angle =
-        Math.random() * Math.PI * 2;
+        Math.random() *
+        Math.PI *
+        2;
 
       const speed =
-        50 + Math.random() * 180;
+        50 +
+        Math.random() *
+        180;
+
 
       effect.particles.push({
         x: 0,
         y: 0,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed
+        vx:
+          Math.cos(angle) *
+          speed,
+        vy:
+          Math.sin(angle) *
+          speed
       });
+
     }
+
   }
 
-  visuals.push(effect);
+
+  visuals.push(
+    effect
+  );
+
 }
 
-function updateVisuals(dt) {
-  for (let i = visuals.length - 1; i >= 0; i--) {
-    const effect = visuals[i];
 
-    effect.life -= dt;
+function updateVisuals(
+  dt
+) {
 
-    if (effect.type === "hit") {
-      for (const p of effect.particles) {
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
+  for (
+    let i =
+      visuals.length - 1;
+    i >= 0;
+    i--
+  ) {
+
+    const effect =
+      visuals[i];
+
+    effect.life -=
+      dt;
+
+
+    if (
+      effect.type === "hit"
+    ) {
+
+      for (
+        const p
+        of effect.particles
+      ) {
+
+        p.x +=
+          p.vx * dt;
+
+        p.y +=
+          p.vy * dt;
+
       }
+
     }
 
-    if (effect.life <= 0) {
-      visuals.splice(i, 1);
+
+    if (
+      effect.life <= 0
+    ) {
+
+      visuals.splice(
+        i,
+        1
+      );
+
     }
+
   }
+
 }
+
 
 function drawVisuals() {
-  for (const effect of visuals) {
+
+  for (
+    const effect
+    of visuals
+  ) {
+
     const progress =
-      1 - effect.life / effect.maxLife;
+      1 -
+      effect.life /
+      effect.maxLife;
 
     const alpha =
-      Math.max(0, 1 - progress);
+      Math.max(
+        0,
+        1 - progress
+      );
+
 
     ctx.save();
 
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha =
+      alpha;
 
-    if (effect.type === "fire") {
+
+    /* FIRE */
+
+    if (
+      effect.type === "fire"
+    ) {
+
       ctx.translate(
         effect.x,
         effect.y
       );
 
-      const radius =
-        25 + progress * 50;
 
-      const gradient = ctx.createRadialGradient(
+      const radius =
+        25 +
+        progress * 50;
+
+
+      const gradient =
+        ctx.createRadialGradient(
+          0,
+          0,
+          5,
+          0,
+          0,
+          radius
+        );
+
+
+      gradient.addColorStop(
         0,
-        0,
-        5,
-        0,
-        0,
-        radius
+        "#ffffff"
       );
 
-      gradient.addColorStop(0, "#fff");
-      gradient.addColorStop(0.25, "#ffd85c");
-      gradient.addColorStop(0.65, "#ff6a2a");
-      gradient.addColorStop(1, "rgba(255,40,0,0)");
+      gradient.addColorStop(
+        0.25,
+        "#ffd85c"
+      );
 
-      ctx.fillStyle = gradient;
+      gradient.addColorStop(
+        0.65,
+        "#ff6a2a"
+      );
+
+      gradient.addColorStop(
+        1,
+        "rgba(255,40,0,0)"
+      );
+
+
+      ctx.fillStyle =
+        gradient;
+
 
       ctx.beginPath();
+
       ctx.arc(
         0,
         0,
@@ -1018,35 +2183,65 @@ function drawVisuals() {
       );
 
       ctx.fill();
+
     }
 
-    else if (effect.type === "dash") {
+
+    /* DASH */
+
+    else if (
+      effect.type === "dash"
+    ) {
+
       ctx.translate(
         effect.x,
         effect.y
       );
 
-      ctx.strokeStyle = "#7de9ff";
+      ctx.strokeStyle =
+        "#7de9ff";
+
       ctx.lineWidth = 8;
 
-      for (let i = 0; i < 7; i++) {
+
+      for (
+        let i = 0;
+        i < 7;
+        i++
+      ) {
+
         ctx.beginPath();
 
         ctx.moveTo(
-          -effect.direction * i * 20,
-          -25 + i * 8
+          -effect.direction *
+            i *
+            20,
+
+          -25 +
+            i * 8
         );
 
         ctx.lineTo(
-          -effect.direction * (100 + i * 15),
-          -25 + i * 8
+          -effect.direction *
+            (100 + i * 15),
+
+          -25 +
+            i * 8
         );
 
         ctx.stroke();
+
       }
+
     }
 
-    else if (effect.type === "wind") {
+
+    /* WIND */
+
+    else if (
+      effect.type === "wind"
+    ) {
+
       ctx.translate(
         effect.x,
         effect.y
@@ -1057,32 +2252,50 @@ function drawVisuals() {
         1
       );
 
-      ctx.strokeStyle = "#bfffff";
+      ctx.strokeStyle =
+        "#bfffff";
+
       ctx.lineWidth = 8;
+
 
       ctx.beginPath();
 
       ctx.arc(
         0,
         0,
-        35 + progress * 60,
+        35 +
+          progress * 60,
         -1,
         1
       );
 
       ctx.stroke();
+
     }
 
-    else if (effect.type === "hit") {
+
+    /* HIT */
+
+    else if (
+      effect.type === "hit"
+    ) {
+
       ctx.translate(
         effect.x,
         effect.y
       );
 
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle =
+        "#ffffff";
+
       ctx.lineWidth = 4;
 
-      for (const p of effect.particles) {
+
+      for (
+        const p
+        of effect.particles
+      ) {
+
         ctx.beginPath();
 
         ctx.moveTo(
@@ -1091,81 +2304,126 @@ function drawVisuals() {
         );
 
         ctx.lineTo(
-          p.x - p.vx * 0.035,
-          p.y - p.vy * 0.035
+          p.x -
+            p.vx *
+            0.035,
+
+          p.y -
+            p.vy *
+            0.035
         );
 
         ctx.stroke();
+
       }
+
 
       ctx.beginPath();
 
       ctx.arc(
         0,
         0,
-        15 + progress * 45,
+        15 +
+          progress * 45,
         0,
         Math.PI * 2
       );
 
       ctx.stroke();
+
     }
 
+
     ctx.restore();
+
   }
+
 }
 
 
-// --------------------------------------------------
-// LOCAL FALLBACK CHARACTERS
-// --------------------------------------------------
+/* =====================================================
+   FALLBACK CHARACTERS
+===================================================== */
 
 function drawFallbackCharacters() {
-  // This guarantees that the canvas isn't empty while
-  // waiting for the first server state.
 
   const p1 = {
+
     role: "P1",
+
     x: 300,
+
     y: 510,
+
     hp: 100,
+
     facing: 1,
+
     blocking: false,
+
     attackTimer: 0,
+
     dashTimer: 0
+
   };
+
 
   const p2 = {
+
     role: "P2",
+
     x: 900,
+
     y: 510,
+
     hp: 100,
+
     facing: -1,
+
     blocking: false,
+
     attackTimer: 0,
+
     dashTimer: 0
+
   };
 
-  drawStickman(p1);
-  drawStickman(p2);
+
+  drawStickman(
+    p1
+  );
+
+  drawStickman(
+    p2
+  );
+
 }
 
 
-// --------------------------------------------------
-// RENDER LOOP
-// --------------------------------------------------
+/* =====================================================
+   RENDER LOOP
+===================================================== */
 
-function render(now) {
-  const dt = Math.min(
-    0.05,
-    (now - lastFrame) / 1000
-  );
+function render(
+  now
+) {
 
-  lastFrame = now;
+  const dt =
+    Math.min(
+      0.05,
+      (now - lastFrame) /
+        1000
+    );
+
+  lastFrame =
+    now;
+
 
   resizeIfNeeded();
 
-  // Clear using actual CSS canvas size
+
+  /* Clear */
+
   ctx.setTransform(
     1,
     0,
@@ -1175,6 +2433,7 @@ function render(now) {
     0
   );
 
+
   ctx.clearRect(
     0,
     0,
@@ -1182,13 +2441,24 @@ function render(now) {
     canvas.clientHeight
   );
 
+
   setupWorldTransform();
+
+
+  /* Arena */
 
   drawArena();
 
-  // IMPORTANT:
-  // Draw fallback characters first.
-  // Then replace them with real server characters.
+
+  /*
+    ALWAYS draw characters.
+
+    Before the server sends state:
+    fallback characters appear.
+
+    After state arrives:
+    real characters appear.
+  */
 
   if (
     !state ||
@@ -1196,48 +2466,86 @@ function render(now) {
     !state.players.P1 ||
     !state.players.P2
   ) {
+
     drawFallbackCharacters();
+
   } else {
-    const p1 = state.players.P1;
-    const p2 = state.players.P2;
 
-    drawStickman(p1);
-    drawStickman(p2);
+    drawStickman(
+      state.players.P1
+    );
 
-    for (const projectile of state.projectiles || []) {
-      drawProjectile(projectile);
+    drawStickman(
+      state.players.P2
+    );
+
+
+    for (
+      const projectile
+      of state.projectiles ||
+      []
+    ) {
+
+      drawProjectile(
+        projectile
+      );
+
     }
+
   }
 
-  updateVisuals(dt);
+
+  updateVisuals(
+    dt
+  );
+
   drawVisuals();
 
-  requestAnimationFrame(render);
+
+  requestAnimationFrame(
+    render
+  );
+
 }
 
-let previousCanvasWidth = 0;
-let previousCanvasHeight = 0;
 
 function resizeIfNeeded() {
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
+
+  const width =
+    canvas.clientWidth;
+
+  const height =
+    canvas.clientHeight;
+
 
   if (
-    width !== previousCanvasWidth ||
-    height !== previousCanvasHeight
+    width !==
+      previousCanvasWidth ||
+    height !==
+      previousCanvasHeight
   ) {
-    previousCanvasWidth = width;
-    previousCanvasHeight = height;
+
+    previousCanvasWidth =
+      width;
+
+    previousCanvasHeight =
+      height;
 
     resizeCanvas();
+
   }
+
 }
 
-requestAnimationFrame(render);
 
+/* =====================================================
+   START
+===================================================== */
 
-// --------------------------------------------------
-// START
-// --------------------------------------------------
+resizeCanvas();
+
+requestAnimationFrame(
+  render
+);
 
 connect();
