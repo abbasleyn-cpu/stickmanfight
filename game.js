@@ -1,159 +1,21 @@
-const canvas =
-  document.getElementById("arena");
+// game.js
+// Stickman Fight - client
+// PC + mobile controls, canvas renderer, effects and WebSocket multiplayer.
 
-const ctx =
-  canvas.getContext("2d");
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-const lobby =
-  document.getElementById("lobby");
-
-const game =
-  document.getElementById("game");
-
-const connectionStatus =
-  document.getElementById(
-    "connectionStatus"
-  );
-
-const createRoomButton =
-  document.getElementById(
-    "createRoom"
-  );
-
-const showJoinButton =
-  document.getElementById(
-    "showJoin"
-  );
-
-const joinPanel =
-  document.getElementById(
-    "joinPanel"
-  );
-
-const joinRoomButton =
-  document.getElementById(
-    "joinRoom"
-  );
-
-const roomInput =
-  document.getElementById(
-    "roomInput"
-  );
-
-const roomInfo =
-  document.getElementById(
-    "roomInfo"
-  );
-
-const lobbyStatus =
-  document.getElementById(
-    "lobbyStatus"
-  );
-
-const roomCodeDisplay =
-  document.getElementById(
-    "roomCodeDisplay"
-  );
-
-const hp1 =
-  document.getElementById("hp1");
-
-const hp2 =
-  document.getElementById("hp2");
-
-const timer =
-  document.getElementById("timer");
-
-const fireCD =
-  document.getElementById(
-    "fireCD"
-  );
-
-const dashCD =
-  document.getElementById(
-    "dashCD"
-  );
-
-const windCD =
-  document.getElementById(
-    "windCD"
-  );
-
-const gameOverlay =
-  document.getElementById(
-    "gameOverlay"
-  );
-
-const winnerText =
-  document.getElementById(
-    "winnerText"
-  );
-
-const roundText =
-  document.getElementById(
-    "roundText"
-  );
-
-const rematchButton =
-  document.getElementById(
-    "rematchButton"
-  );
-
-const backButton =
-  document.getElementById(
-    "backButton"
-  );
-
-const controlText =
-  document.getElementById(
-    "controlText"
-  );
-
-
-/* WORLD */
-
-const WORLD_WIDTH = 1200;
-const WORLD_HEIGHT = 600;
-
-const GROUND = 500;
-
-
-/* NETWORK */
+const socketUrl =
+  `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
 
 let socket = null;
-
-let myPlayer = 0;
-
+let role = null;
 let roomCode = "";
+let state = null;
+let lastFrame = performance.now();
 
-let connected = false;
-
-
-/* GAME */
-
-let running = false;
-
-let currentTime = 90;
-
-let players = {
-  1: makePlayer(1),
-  2: makePlayer(2)
-};
-
-let projectiles = [];
-
-let effects = [];
-
-let localEffects = [];
-
-let lastServerUpdate = performance.now();
-
-let lastInputSent = 0;
-
-
-/* INPUT */
-
-const keys = {};
+const WORLD_W = 1200;
+const WORLD_H = 600;
 
 const input = {
   left: false,
@@ -162,1705 +24,1086 @@ const input = {
   block: false
 };
 
+const visuals = [];
 
-/* COOLDOWNS */
+const $ = (id) => document.getElementById(id);
 
-const cooldowns = {
-  fire: 0,
-  dash: 0,
-  wind: 0
-};
+const createBtn = $("createBtn");
+const showJoinBtn = $("showJoinBtn");
+const joinBtn = $("joinBtn");
+const roomInput = $("roomInput");
+const joinBox = $("joinBox");
+const roomInfo = $("roomInfo");
+const roomCodeEl = $("roomCode");
+const copyBtn = $("copyBtn");
+const statusEl = $("status");
+const connectionEl = $("connection");
 
+const lobby = $("lobby");
+const game = $("game");
 
-/* ANIMATION */
+const roleEl = $("role");
+const timerEl = $("timer");
+const statusGameEl = $("gameStatus");
 
-let animationTime = 0;
+const p1Hp = $("p1Hp");
+const p2Hp = $("p2Hp");
+const p1HpText = $("p1HpText");
+const p2HpText = $("p2HpText");
 
-
-/* PLAYER TEMPLATE */
-
-function makePlayer(id) {
-  return {
-    id,
-
-    connected: false,
-
-    x:
-      id === 1
-        ? 250
-        : 950,
-
-    y: GROUND,
-
-    vx: 0,
-    vy: 0,
-
-    facing:
-      id === 1
-        ? 1
-        : -1,
-
-    hp: 100,
-    maxHp: 100,
-
-    grounded: true,
-
-    state: "idle",
-
-    block: false,
-
-    attackTimer: 0,
-
-    hitStun: 0,
-
-    dashTimer: 0,
-
-    invulnerable: 0,
-
-    cooldowns: {
-      fire: 0,
-      dash: 0,
-      wind: 0
-    }
-  };
-}
+const winOverlay = $("winOverlay");
+const winnerText = $("winnerText");
+const rematchBtn = $("rematchBtn");
 
 
-/* CONNECT */
+// --------------------------------------------------
+// WEBSOCKET
+// --------------------------------------------------
 
 function connect() {
-  const protocol =
-    location.protocol === "https:"
-      ? "wss:"
-      : "ws:";
+  socket = new WebSocket(socketUrl);
 
-  const address =
-    `${protocol}//${location.host}`;
+  socket.addEventListener("open", () => {
+    connectionEl.textContent = "● ONLINE";
+    connectionEl.classList.add("online");
+  });
 
-  socket =
-    new WebSocket(address);
+  socket.addEventListener("close", () => {
+    connectionEl.textContent = "● OFFLINE";
+    connectionEl.classList.remove("online");
 
-  socket.onopen = () => {
-    connected = true;
+    statusEl.textContent =
+      "Connection lost. Refresh the page to reconnect.";
 
-    connectionStatus.textContent =
-      "ONLINE";
-  };
+    statusGameEl.textContent = "Disconnected";
+  });
 
-  socket.onclose = () => {
-    connected = false;
+  socket.addEventListener("error", () => {
+    connectionEl.textContent = "Connection error";
+  });
 
-    connectionStatus.textContent =
-      "OFFLINE";
+  socket.addEventListener("message", (event) => {
+    let msg;
 
-    lobbyStatus.textContent =
-      "Connection lost. Refresh the page.";
-  };
-
-  socket.onerror = () => {
-    connectionStatus.textContent =
-      "ERROR";
-  };
-
-  socket.onmessage = event => {
     try {
-      handleMessage(
-        JSON.parse(event.data)
-      );
+      msg = JSON.parse(event.data);
     } catch {
-      console.error(
-        "Invalid server message"
-      );
+      return;
     }
-  };
+
+    handleMessage(msg);
+  });
 }
 
-function send(message) {
-  if (
-    socket &&
-    socket.readyState ===
-      WebSocket.OPEN
-  ) {
-    socket.send(
-      JSON.stringify(message)
-    );
-  }
-}
-
-
-/* SERVER MESSAGES */
-
-function handleMessage(message) {
-
-  if (
-    message.type ===
-    "connected"
-  ) {
+function send(data) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
     return;
   }
 
+  socket.send(JSON.stringify(data));
+}
 
-  if (
-    message.type ===
-    "roomCreated"
-  ) {
-    myPlayer =
-      message.player;
+function handleMessage(msg) {
+  switch (msg.type) {
+    case "welcome":
+      role = msg.role;
+      roomCode = msg.code;
 
-    roomCode =
-      message.code;
+      roomCodeEl.textContent = roomCode;
+      roleEl.textContent = role;
 
-    roomInfo.textContent =
-      roomCode;
+      roomInfo.hidden = false;
+      createBtn.disabled = true;
+      showJoinBtn.disabled = true;
 
-    roomCodeDisplay.textContent =
-      `ROOM ${roomCode}`;
+      statusEl.textContent =
+        role === "P1"
+          ? "Room created. Waiting for Player 2..."
+          : "Joined room. Waiting for match...";
 
-    lobbyStatus.textContent =
-      "Waiting for Player 2...";
-  }
+      break;
 
+    case "room":
+      roomCode = msg.code || roomCode;
+      roomCodeEl.textContent = roomCode;
 
-  if (
-    message.type ===
-    "joined"
-  ) {
-    myPlayer =
-      message.player;
+      if (msg.started) {
+        lobby.hidden = true;
+        game.hidden = false;
 
-    roomCode =
-      message.code;
+        statusGameEl.textContent = "FIGHT!";
+      } else {
+        lobby.hidden = false;
+        game.hidden = true;
 
-    roomInfo.textContent =
-      roomCode;
+        statusEl.textContent =
+          msg.connected >= 2
+            ? "Both players connected. Starting..."
+            : "Waiting for Player 2...";
+      }
 
-    roomCodeDisplay.textContent =
-      `ROOM ${roomCode}`;
+      break;
 
-    lobbyStatus.textContent =
-      "Joined room. Waiting for game...";
-  }
+    case "state":
+      state = msg;
 
+      if (msg.started) {
+        lobby.hidden = true;
+        game.hidden = false;
+      }
 
-  if (
-    message.type ===
-    "roomState"
-  ) {
-    if (
-      message.started
-    ) {
-      startGame();
-    } else if (
-      !message.finished
-    ) {
-      lobbyStatus.textContent =
-        message.players.length === 1
-          ? "Waiting for Player 2..."
-          : "Ready!";
-    }
-  }
+      updateHUD();
+      processEvents(msg.events || []);
 
+      if (msg.winner) {
+        showWinner(msg.winner);
+      } else {
+        winOverlay.hidden = true;
+      }
 
-  if (
-    message.type ===
-    "state"
-  ) {
-    applyState(message);
-  }
+      break;
 
-
-  if (
-    message.type ===
-    "roundOver"
-  ) {
-    showRoundOver(
-      message.winner
-    );
-  }
-
-
-  if (
-    message.type ===
-    "playerLeft"
-  ) {
-    running = false;
-
-    gameOverlay.hidden =
-      false;
-
-    winnerText.textContent =
-      "OPPONENT LEFT";
-
-    roundText.textContent =
-      "The other player disconnected.";
-  }
-
-
-  if (
-    message.type ===
-    "rematchWaiting"
-  ) {
-    roundText.textContent =
-      `Player ${message.player} is ready.`;
-  }
-
-
-  if (
-    message.type ===
-    "error"
-  ) {
-    lobbyStatus.textContent =
-      message.message;
+    case "error":
+      statusEl.textContent = msg.message || "Error";
+      statusGameEl.textContent = msg.message || "Error";
+      break;
   }
 }
 
 
-/* APPLY STATE */
+// --------------------------------------------------
+// LOBBY
+// --------------------------------------------------
 
-function applyState(state) {
+createBtn.addEventListener("click", () => {
+  send({ type: "create" });
+});
 
-  currentTime =
-    state.time;
+showJoinBtn.addEventListener("click", () => {
+  joinBox.hidden = !joinBox.hidden;
 
-  timer.textContent =
-    Math.ceil(
-      currentTime
-    );
-
-  for (
-    const serverPlayer
-    of state.players
-  ) {
-    if (
-      !serverPlayer
-    ) continue;
-
-    players[
-      serverPlayer.id
-    ] = {
-      ...players[
-        serverPlayer.id
-      ],
-      ...serverPlayer
-    };
+  if (!joinBox.hidden) {
+    roomInput.focus();
   }
+});
 
-  projectiles =
-    state.projectiles || [];
+joinBtn.addEventListener("click", () => {
+  const code = roomInput.value.trim().toUpperCase();
 
-  const serverEffects =
-    state.effects || [];
-
-  for (
-    const effect
-    of serverEffects
-  ) {
-    createEffect(
-      effect
-    );
+  if (!code) {
+    statusEl.textContent = "Enter a room code.";
+    return;
   }
-
-  updateHud();
-
-  if (
-    state.started &&
-    !running
-  ) {
-    startGame();
-  }
-}
-
-
-/* START */
-
-function startGame() {
-
-  lobby.hidden = true;
-
-  game.hidden = false;
-
-  gameOverlay.hidden =
-    true;
-
-  running = true;
-
-  resizeCanvas();
-
-  updateControlText();
-}
-
-
-/* HUD */
-
-function updateHud() {
-
-  hp1.style.width =
-    `${Math.max(
-      0,
-      players[1].hp
-    )}%`;
-
-  hp2.style.width =
-    `${Math.max(
-      0,
-      players[2].hp
-    )}%`;
-
-  cooldowns.fire =
-    players[
-      myPlayer
-    ]?.cooldowns?.fire || 0;
-
-  cooldowns.dash =
-    players[
-      myPlayer
-    ]?.cooldowns?.dash || 0;
-
-  cooldowns.wind =
-    players[
-      myPlayer
-    ]?.cooldowns?.wind || 0;
-
-  fireCD.textContent =
-    cooldowns.fire > 0
-      ? `🔥 ${cooldowns.fire.toFixed(1)}`
-      : "🔥 READY";
-
-  dashCD.textContent =
-    cooldowns.dash > 0
-      ? `⚡ ${cooldowns.dash.toFixed(1)}`
-      : "⚡ READY";
-
-  windCD.textContent =
-    cooldowns.wind > 0
-      ? `🌪 ${cooldowns.wind.toFixed(1)}`
-      : "🌪 READY";
-}
-
-
-/* CONTROLS */
-
-function getControls() {
-
-  if (myPlayer === 1) {
-    return {
-      left: "KeyA",
-      right: "KeyD",
-      jump: "KeyW",
-
-      attack: "KeyF",
-      kick: "KeyR",
-      block: "KeyG",
-
-      fire: "Digit1",
-      dash: "Digit2",
-      wind: "Digit3"
-    };
-  }
-
-  return {
-    left: "ArrowLeft",
-    right: "ArrowRight",
-    jump: "ArrowUp",
-
-    attack: "KeyL",
-    kick: "KeyO",
-    block: "KeyK",
-
-    fire: "Digit8",
-    dash: "Digit9",
-    wind: "Digit0"
-  };
-}
-
-function updateControlText() {
-
-  if (myPlayer === 1) {
-    controlText.textContent =
-      "P1: A/D move • W jump • F punch • R kick • G block • 1/2/3 powers";
-  } else {
-    controlText.textContent =
-      "P2: ←/→ move • ↑ jump • L punch • O kick • K block • 8/9/0 powers";
-  }
-}
-
-
-/* KEYBOARD */
-
-window.addEventListener(
-  "keydown",
-  event => {
-
-    if (
-      !running ||
-      !myPlayer
-    ) {
-      return;
-    }
-
-    const c =
-      getControls();
-
-    keys[event.code] = true;
-
-    if (
-      [
-        "ArrowLeft",
-        "ArrowRight",
-        "ArrowUp",
-        "Space"
-      ].includes(
-        event.code
-      )
-    ) {
-      event.preventDefault();
-    }
-
-    if (
-      event.repeat
-    ) {
-      return;
-    }
-
-    if (
-      event.code ===
-      c.attack
-    ) {
-      sendAction(
-        "attack"
-      );
-    }
-
-    if (
-      event.code ===
-      c.kick
-    ) {
-      sendAction(
-        "kick"
-      );
-    }
-
-    if (
-      event.code ===
-      c.fire
-    ) {
-      useAbility(
-        "fire"
-      );
-    }
-
-    if (
-      event.code ===
-      c.dash
-    ) {
-      useAbility(
-        "dash"
-      );
-    }
-
-    if (
-      event.code ===
-      c.wind
-    ) {
-      useAbility(
-        "wind"
-      );
-    }
-  }
-);
-
-window.addEventListener(
-  "keyup",
-  event => {
-    keys[event.code] =
-      false;
-  }
-);
-
-
-/* ACTION */
-
-function sendAction(action) {
-
-  if (!running) return;
 
   send({
-    type: "action",
-    action
+    type: "join",
+    code
   });
+});
 
-  const p =
-    players[myPlayer];
-
-  if (p) {
-    p.state =
-      action;
+roomInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    joinBtn.click();
   }
+});
+
+copyBtn.addEventListener("click", async () => {
+  if (!roomCode) return;
+
+  try {
+    await navigator.clipboard.writeText(roomCode);
+    copyBtn.textContent = "Copied!";
+
+    setTimeout(() => {
+      copyBtn.textContent = "Copy";
+    }, 1000);
+  } catch {
+    statusEl.textContent = `Room code: ${roomCode}`;
+  }
+});
+
+rematchBtn.addEventListener("click", () => {
+  send({ type: "rematch" });
+  winnerText.textContent = "Waiting for opponent...";
+  rematchBtn.disabled = true;
+});
+
+
+// --------------------------------------------------
+// KEYBOARD
+// --------------------------------------------------
+
+const keyMapP1 = {
+  KeyA: "left",
+  KeyD: "right",
+  KeyW: "jump",
+  KeyG: "block"
+};
+
+const keyMapP2 = {
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowUp: "jump",
+  KeyK: "block"
+};
+
+function getKeyMap() {
+  return role === "P2" ? keyMapP2 : keyMapP1;
 }
 
-
-/* ABILITIES */
-
-function useAbility(name) {
-
-  if (!running) return;
-
-  if (
-    cooldowns[name] > 0
-  ) {
-    return;
+function keyboardAction(code) {
+  if (role === "P1") {
+    if (code === "KeyF") return "attack";
+    if (code === "KeyR") return "kick";
+    if (code === "Digit1") return "fire";
+    if (code === "Digit2") return "dash";
+    if (code === "Digit3") return "wind";
   }
 
-  sendAction(name);
+  if (role === "P2") {
+    if (code === "KeyL") return "attack";
+    if (code === "KeyO") return "kick";
+    if (code === "Digit8") return "fire";
+    if (code === "Digit9") return "dash";
+    if (code === "Digit0") return "wind";
+  }
 
-  createEffect({
-    type: name,
-    x:
-      players[myPlayer].x +
-      players[myPlayer].facing * 60,
-    y:
-      players[myPlayer].y - 70
-  });
+  return null;
 }
 
+window.addEventListener("keydown", (event) => {
+  const map = getKeyMap();
 
-/* INPUT SYNC */
-
-function updateInput() {
-
-  if (!running) return;
-
-  const c =
-    getControls();
-
-  input.left =
-    !!keys[c.left];
-
-  input.right =
-    !!keys[c.right];
-
-  input.jump =
-    !!keys[c.jump];
-
-  input.block =
-    !!keys[c.block];
-
-  const now =
-    performance.now();
-
-  if (
-    now - lastInputSent <
-    35
-  ) {
-    return;
+  if (map[event.code]) {
+    input[map[event.code]] = true;
+    event.preventDefault();
   }
 
-  lastInputSent =
-    now;
+  const action = keyboardAction(event.code);
+
+  if (action && !event.repeat) {
+    send({
+      type: "action",
+      action
+    });
+
+    event.preventDefault();
+  }
+});
+
+window.addEventListener("keyup", (event) => {
+  const map = getKeyMap();
+
+  if (map[event.code]) {
+    input[map[event.code]] = false;
+    event.preventDefault();
+  }
+});
+
+window.addEventListener("blur", () => {
+  input.left = false;
+  input.right = false;
+  input.jump = false;
+  input.block = false;
 
   send({
     type: "input",
     input
   });
-}
+});
 
 
-/* MOBILE CONTROLS */
+// --------------------------------------------------
+// SEND INPUT
+// --------------------------------------------------
 
-function setupMobileControls() {
-
-  document
-    .querySelectorAll(
-      "[data-control]"
-    )
-    .forEach(button => {
-
-      const control =
-        button.dataset.control;
-
-      const press =
-        event => {
-          event.preventDefault();
-
-          if (
-            control ===
-            "left"
-          ) {
-            input.left =
-              true;
-          }
-
-          if (
-            control ===
-            "right"
-          ) {
-            input.right =
-              true;
-          }
-
-          if (
-            control ===
-            "jump"
-          ) {
-            input.jump =
-              true;
-          }
-
-          if (
-            control ===
-            "block"
-          ) {
-            input.block =
-              true;
-          }
-
-          send({
-            type: "input",
-            input
-          });
-        };
-
-      const release =
-        event => {
-          event.preventDefault();
-
-          if (
-            control ===
-            "left"
-          ) {
-            input.left =
-              false;
-          }
-
-          if (
-            control ===
-            "right"
-          ) {
-            input.right =
-              false;
-          }
-
-          if (
-            control ===
-            "jump"
-          ) {
-            input.jump =
-              false;
-          }
-
-          if (
-            control ===
-            "block"
-          ) {
-            input.block =
-              false;
-          }
-
-          send({
-            type: "input",
-            input
-          });
-        };
-
-      button.addEventListener(
-        "pointerdown",
-        press
-      );
-
-      button.addEventListener(
-        "pointerup",
-        release
-      );
-
-      button.addEventListener(
-        "pointercancel",
-        release
-      );
-
-      button.addEventListener(
-        "pointerleave",
-        release
-      );
-    });
-
-
-  document
-    .querySelectorAll(
-      "[data-action]"
-    )
-    .forEach(button => {
-
-      button.addEventListener(
-        "pointerdown",
-        event => {
-          event.preventDefault();
-
-          sendAction(
-            button.dataset.action
-          );
-        }
-      );
-    });
-
-
-  document
-    .querySelectorAll(
-      "[data-ability]"
-    )
-    .forEach(button => {
-
-      button.addEventListener(
-        "pointerdown",
-        event => {
-          event.preventDefault();
-
-          useAbility(
-            button.dataset.ability
-          );
-        }
-      );
-    });
-}
-
-setupMobileControls();
-
-
-/* EFFECTS */
-
-function createEffect(effect) {
-
-  effects.push({
-    ...effect,
-
-    life:
-      effect.life ||
-      .7,
-
-    maxLife:
-      effect.life ||
-      .7,
-
-    particles:
-      []
+setInterval(() => {
+  send({
+    type: "input",
+    input: {
+      left: input.left,
+      right: input.right,
+      jump: input.jump,
+      block: input.block
+    }
   });
+}, 50);
 
-  if (
-    effect.type ===
-    "hit"
-  ) {
 
-    for (let i = 0; i < 8; i++) {
+// --------------------------------------------------
+// MOBILE CONTROLS
+// --------------------------------------------------
 
-      effects[
-        effects.length - 1
-      ].particles.push({
-        x: effect.x,
-        y: effect.y,
+document.querySelectorAll("[data-input]").forEach((button) => {
+  const key = button.dataset.input;
 
-        vx:
-          (Math.random() - .5) *
-          260,
+  const press = (event) => {
+    event.preventDefault();
 
-        vy:
-          (Math.random() - .7) *
-          300
-      });
+    try {
+      button.setPointerCapture(event.pointerId);
+    } catch {}
+
+    input[key] = true;
+    button.classList.add("pressed");
+  };
+
+  const release = (event) => {
+    event.preventDefault();
+
+    input[key] = false;
+    button.classList.remove("pressed");
+  };
+
+  button.addEventListener("pointerdown", press);
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("pointerleave", release);
+});
+
+document.querySelectorAll("[data-action]").forEach((button) => {
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+
+    button.classList.add("pressed");
+
+    send({
+      type: "action",
+      action: button.dataset.action
+    });
+
+    setTimeout(() => {
+      button.classList.remove("pressed");
+    }, 120);
+  });
+});
+
+
+// --------------------------------------------------
+// HUD
+// --------------------------------------------------
+
+function updateHUD() {
+  if (!state || !state.players) return;
+
+  const p1 = state.players.P1;
+  const p2 = state.players.P2;
+
+  if (p1) {
+    const hp = Math.max(0, Math.min(100, p1.hp));
+    p1Hp.style.width = `${hp}%`;
+    p1HpText.textContent = `${Math.ceil(hp)} HP`;
+  }
+
+  if (p2) {
+    const hp = Math.max(0, Math.min(100, p2.hp));
+    p2Hp.style.width = `${hp}%`;
+    p2HpText.textContent = `${Math.ceil(hp)} HP`;
+  }
+
+  timerEl.textContent =
+    state.time !== undefined
+      ? Math.ceil(state.time)
+      : "60";
+
+  updateCooldownButtons();
+
+  if (state.started) {
+    statusGameEl.textContent =
+      role === "P1"
+        ? "You are Player 1"
+        : "You are Player 2";
+  }
+}
+
+function updateCooldownButtons() {
+  if (!state || !role) return;
+
+  const player = state.players?.[role];
+
+  if (!player) return;
+
+  const cooldowns = player.cooldowns || {};
+
+  const buttons = {
+    fire: document.querySelector('[data-action="fire"]'),
+    dash: document.querySelector('[data-action="dash"]'),
+    wind: document.querySelector('[data-action="wind"]')
+  };
+
+  const names = {
+    fire: "🔥 FIRE",
+    dash: "⚡ DASH",
+    wind: "🌪 WIND"
+  };
+
+  for (const key of Object.keys(buttons)) {
+    const button = buttons[key];
+
+    if (!button) continue;
+
+    const cd = Number(cooldowns[key] || 0);
+
+    if (cd > 0) {
+      button.textContent = `${names[key]} ${cd.toFixed(1)}`;
+      button.classList.add("cooldown");
+    } else {
+      button.textContent = names[key];
+      button.classList.remove("cooldown");
     }
   }
 }
 
-
-/* CANVAS */
-
-function resizeCanvas() {
-
-  const rect =
-    canvas.getBoundingClientRect();
-
-  const dpr =
-    Math.min(
-      2,
-      window.devicePixelRatio || 1
-    );
-
-  canvas.width =
-    Math.max(
-      1,
-      Math.floor(
-        rect.width * dpr
-      )
-    );
-
-  canvas.height =
-    Math.max(
-      1,
-      Math.floor(
-        rect.height * dpr
-      )
-    );
-}
-
-window.addEventListener(
-  "resize",
-  resizeCanvas
-);
-
-
-/* SCREEN TRANSFORM */
-
-function beginWorld() {
-
-  const width =
-    canvas.clientWidth;
-
-  const height =
-    canvas.clientHeight;
-
-  const scale =
-    Math.min(
-      width / WORLD_WIDTH,
-      height / WORLD_HEIGHT
-    );
-
-  const offsetX =
-    (width -
-      WORLD_WIDTH * scale) /
-    2;
-
-  const offsetY =
-    (height -
-      WORLD_HEIGHT * scale) /
-    2;
-
-  const dpr =
-    Math.min(
-      2,
-      window.devicePixelRatio || 1
-    );
-
-  ctx.setTransform(
-    dpr * scale,
-    0,
-    0,
-    dpr * scale,
-    offsetX * dpr,
-    offsetY * dpr
-  );
-}
-
-
-/* DRAW BACKGROUND */
-
-function drawArena() {
-
-  const gradient =
-    ctx.createLinearGradient(
-      0,
-      0,
-      0,
-      WORLD_HEIGHT
-    );
-
-  gradient.addColorStop(
-    0,
-    "#10192b"
-  );
-
-  gradient.addColorStop(
-    1,
-    "#05070c"
-  );
-
-  ctx.fillStyle =
-    gradient;
-
-  ctx.fillRect(
-    0,
-    0,
-    WORLD_WIDTH,
-    WORLD_HEIGHT
-  );
-
-
-  /* moon */
-
-  ctx.fillStyle =
-    "rgba(255,255,255,.08)";
-
-  ctx.beginPath();
-
-  ctx.arc(
-    950,
-    125,
-    75,
-    0,
-    Math.PI * 2
-  );
-
-  ctx.fill();
-
-
-  /* stars */
-
-  for (
-    let i = 0;
-    i < 50;
-    i++
-  ) {
-
-    const x =
-      (i * 237) %
-      WORLD_WIDTH;
-
-    const y =
-      40 +
-      ((i * 97) %
-        220);
-
-    ctx.fillStyle =
-      "rgba(255,255,255,.25)";
-
-    ctx.fillRect(
-      x,
-      y,
-      2,
-      2
-    );
-  }
-
-
-  /* arena floor */
-
-  ctx.fillStyle =
-    "#0d131f";
-
-  ctx.fillRect(
-    0,
-    455,
-    WORLD_WIDTH,
-    145
-  );
-
-
-  ctx.strokeStyle =
-    "rgba(130,170,255,.22)";
-
-  ctx.lineWidth =
-    3;
-
-  ctx.beginPath();
-
-  ctx.moveTo(
-    0,
-    455
-  );
-
-  ctx.lineTo(
-    WORLD_WIDTH,
-    455
-  );
-
-  ctx.stroke();
-
-
-  /* floor grid */
-
-  ctx.strokeStyle =
-    "rgba(255,255,255,.035)";
-
-  ctx.lineWidth =
-    1;
-
-  for (
-    let x = 0;
-    x <= WORLD_WIDTH;
-    x += 50
-  ) {
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-      x,
-      455
-    );
-
-    ctx.lineTo(
-      x,
-      WORLD_HEIGHT
-    );
-
-    ctx.stroke();
-  }
-
-  for (
-    let y = 455;
-    y <= WORLD_HEIGHT;
-    y += 35
-  ) {
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-      0,
-      y
-    );
-
-    ctx.lineTo(
-      WORLD_WIDTH,
-      y
-    );
-
-    ctx.stroke();
-  }
-}
-
-
-/* PROJECTILES */
-
-function drawProjectiles() {
-
-  for (
-    const projectile
-    of projectiles
-  ) {
-
-    ctx.save();
-
-    ctx.translate(
-      projectile.x,
-      projectile.y
-    );
-
-    const direction =
-      projectile.vx >= 0
-        ? 1
-        : -1;
-
-    ctx.scale(
-      direction,
-      1
-    );
-
-
-    /* wind slash */
-
-    ctx.strokeStyle =
-      "rgba(130,225,255,.9)";
-
-    ctx.lineWidth =
-      8;
-
-    ctx.beginPath();
-
-    ctx.arc(
-      0,
-      0,
-      42,
-      -.9,
-      .9
-    );
-
-    ctx.stroke();
-
-    ctx.strokeStyle =
-      "rgba(255,255,255,.7)";
-
-    ctx.lineWidth =
-      3;
-
-    ctx.beginPath();
-
-    ctx.arc(
-      0,
-      0,
-      28,
-      -.8,
-      .8
-    );
-
-    ctx.stroke();
-
-    ctx.restore();
-  }
-}
-
-
-/* STICKMAN */
-
-function drawPlayer(
-  player,
-  id
-) {
-
-  if (
-    !player.connected
-  ) {
+function showWinner(winner) {
+  winOverlay.hidden = false;
+  rematchBtn.disabled = false;
+
+  if (winner === "draw") {
+    winnerText.textContent = "DRAW!";
     return;
   }
 
-  ctx.save();
+  if (winner === role) {
+    winnerText.textContent = "YOU WIN!";
+  } else {
+    winnerText.textContent = "YOU LOSE!";
+  }
+}
 
-  ctx.translate(
-    player.x,
-    player.y
+
+// --------------------------------------------------
+// CANVAS RESIZE
+// --------------------------------------------------
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+
+  const width = Math.max(1, rect.width);
+  const height = Math.max(1, rect.height);
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+window.addEventListener("resize", resizeCanvas);
+
+resizeCanvas();
+
+
+// --------------------------------------------------
+// WORLD TRANSFORM
+// --------------------------------------------------
+
+function setupWorldTransform() {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+
+  const scale = Math.min(
+    width / WORLD_W,
+    height / WORLD_H
   );
 
-  ctx.scale(
-    player.facing,
-    1
-  );
+  const offsetX = (width - WORLD_W * scale) / 2;
+  const offsetY = (height - WORLD_H * scale) / 2;
 
-
-  const bob =
-    player.grounded
-      ? Math.sin(
-          animationTime * 8 +
-          id
-        ) * 1.5
-      : 0;
-
-  ctx.translate(
+  ctx.setTransform(
+    scale,
     0,
-    bob
+    0,
+    scale,
+    offsetX,
+    offsetY
+  );
+}
+
+
+// --------------------------------------------------
+// DRAW ARENA
+// --------------------------------------------------
+
+function drawArena() {
+  // Background
+  const gradient = ctx.createLinearGradient(
+    0,
+    0,
+    0,
+    WORLD_H
   );
 
+  gradient.addColorStop(0, "#10162b");
+  gradient.addColorStop(0.6, "#171d38");
+  gradient.addColorStop(1, "#090c18");
 
-  /* shadow */
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  // Moon
+  ctx.beginPath();
+  ctx.arc(1000, 100, 55, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.fill();
+
+  // Stars
+  for (let i = 0; i < 60; i++) {
+    const x = (i * 197) % WORLD_W;
+    const y = (i * 83) % 350;
+
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(x, y, 2, 2);
+  }
+
+  // Arena grid
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,0.045)";
+
+  for (let x = 0; x <= WORLD_W; x += 60) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, WORLD_H);
+    ctx.stroke();
+  }
+
+  for (let y = 0; y <= WORLD_H; y += 60) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(WORLD_W, y);
+    ctx.stroke();
+  }
+
+  // Ground glow
+  const groundY = 510;
+
+  const groundGradient = ctx.createLinearGradient(
+    0,
+    groundY,
+    0,
+    WORLD_H
+  );
+
+  groundGradient.addColorStop(0, "#242b4b");
+  groundGradient.addColorStop(1, "#0a0d19");
+
+  ctx.fillStyle = groundGradient;
+  ctx.fillRect(0, groundY, WORLD_W, WORLD_H - groundY);
+
+  // Ground line
+  ctx.beginPath();
+  ctx.moveTo(0, groundY);
+  ctx.lineTo(WORLD_W, groundY);
+
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "#7781a8";
+  ctx.stroke();
+
+  // Center line
+  ctx.beginPath();
+  ctx.moveTo(WORLD_W / 2, groundY - 30);
+  ctx.lineTo(WORLD_W / 2, groundY + 5);
+
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.stroke();
+}
+
+
+// --------------------------------------------------
+// STICKMAN
+// --------------------------------------------------
+
+function drawStickman(player) {
+  if (!player) return;
+
+  // Important:
+  // server uses player.x/player.y as the FOOT position.
+  // Keep everything relative to that point.
+
+  const x = Number(player.x);
+  const y = Number(player.y);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return;
+  }
+
+  const facing =
+    Number(player.facing) < 0 ? -1 : 1;
+
+  const hp = Number(player.hp ?? 100);
 
   ctx.save();
 
-  ctx.scale(
-    1,
-    .25
-  );
+  ctx.translate(x, y);
+  ctx.scale(facing, 1);
 
-  ctx.fillStyle =
-    "rgba(0,0,0,.55)";
+  // Shadow
+  ctx.save();
+
+  ctx.scale(1, 0.25);
 
   ctx.beginPath();
-
   ctx.ellipse(
     0,
-    15,
-    45,
-    15,
     0,
+    42,
+    16,
+    0,
+    0,
+    Math.PI * 2
+  );
+
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fill();
+
+  ctx.restore();
+
+  // Dash afterimage
+  if (player.dashTimer > 0) {
+    for (let i = 1; i <= 4; i++) {
+      ctx.globalAlpha = 0.12 * (5 - i);
+
+      ctx.strokeStyle = "#77ddff";
+      ctx.lineWidth = 7;
+
+      ctx.beginPath();
+      ctx.moveTo(-30 - i * 16, -55);
+      ctx.lineTo(-80 - i * 20, -55);
+
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  // Body styling
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  const bodyColor =
+    player.role === "P1"
+      ? "#65a8ff"
+      : "#ff657c";
+
+  const glowColor =
+    player.role === "P1"
+      ? "#72c8ff"
+      : "#ff728b";
+
+  ctx.shadowBlur = 14;
+  ctx.shadowColor = glowColor;
+
+  ctx.strokeStyle = bodyColor;
+  ctx.fillStyle = bodyColor;
+
+  // HEAD
+  ctx.beginPath();
+  ctx.arc(
+    0,
+    -92,
+    21,
     0,
     Math.PI * 2
   );
 
   ctx.fill();
 
-  ctx.restore();
+  // Face
+  ctx.shadowBlur = 0;
 
-
-  /* ability aura */
-
-  if (
-    player.state ===
-    "fire"
-  ) {
-    drawFireAura();
-  }
-
-  if (
-    player.state ===
-    "dash"
-  ) {
-    drawDashAura();
-  }
-
-  if (
-    player.state ===
-    "wind"
-  ) {
-    drawWindAura();
-  }
-
-
-  ctx.lineCap =
-    "round";
-
-  ctx.lineJoin =
-    "round";
-
-  ctx.strokeStyle =
-    id === 1
-      ? "#ffffff"
-      : "#d8e0ff";
-
-  ctx.lineWidth =
-    8;
-
-
-  /* head */
+  ctx.strokeStyle = "#080a12";
+  ctx.lineWidth = 4;
 
   ctx.beginPath();
+  ctx.moveTo(7, -96);
+  ctx.lineTo(14, -94);
+  ctx.stroke();
 
-  ctx.arc(
+  // BODY
+  ctx.strokeStyle = bodyColor;
+  ctx.lineWidth = 9;
+
+  ctx.beginPath();
+  ctx.moveTo(0, -70);
+  ctx.lineTo(0, -28);
+  ctx.stroke();
+
+  // Legs
+  ctx.lineWidth = 8;
+
+  ctx.beginPath();
+  ctx.moveTo(0, -28);
+  ctx.lineTo(-20, 0);
+  ctx.lineTo(-30, 0);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(0, -28);
+  ctx.lineTo(20, 0);
+  ctx.lineTo(32, 0);
+  ctx.stroke();
+
+  // Arms
+  const attacking =
+    Number(player.attackTimer || 0) > 0;
+
+  if (attacking) {
+    // Punching arm
+    ctx.lineWidth = 9;
+
+    ctx.beginPath();
+    ctx.moveTo(0, -62);
+    ctx.lineTo(30, -52);
+    ctx.lineTo(68, -55);
+    ctx.stroke();
+
+    // Fist
+    ctx.beginPath();
+    ctx.arc(73, -55, 9, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (player.blocking) {
+    // Blocking arm
+    ctx.lineWidth = 8;
+
+    ctx.beginPath();
+    ctx.moveTo(0, -62);
+    ctx.lineTo(32, -70);
+    ctx.lineTo(43, -42);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(43, -42, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shield
+    ctx.strokeStyle = "rgba(130,220,255,0.9)";
+    ctx.lineWidth = 5;
+
+    ctx.beginPath();
+    ctx.arc(
+      40,
+      -60,
+      43,
+      -Math.PI / 2,
+      Math.PI / 2
+    );
+
+    ctx.stroke();
+  } else {
+    // Normal arms
+    ctx.lineWidth = 8;
+
+    ctx.beginPath();
+    ctx.moveTo(0, -62);
+    ctx.lineTo(-30, -43);
+    ctx.lineTo(-45, -20);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, -62);
+    ctx.lineTo(30, -43);
+    ctx.lineTo(45, -20);
+    ctx.stroke();
+  }
+
+  ctx.shadowBlur = 0;
+
+  // Player label
+  ctx.font = "bold 16px Arial";
+  ctx.textAlign = "center";
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(
+    player.role,
     0,
-    -110,
-    25,
+    -125
+  );
+
+  // Small HP bar above character
+  const barWidth = 70;
+  const barHeight = 7;
+
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  ctx.fillRect(
+    -barWidth / 2,
+    -115,
+    barWidth,
+    barHeight
+  );
+
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(
+    -barWidth / 2,
+    -115,
+    barWidth * Math.max(0, hp) / 100,
+    barHeight
+  );
+
+  ctx.restore();
+}
+
+
+// --------------------------------------------------
+// PROJECTILES
+// --------------------------------------------------
+
+function drawProjectile(projectile) {
+  if (!projectile) return;
+
+  const x = Number(projectile.x);
+  const y = Number(projectile.y);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return;
+  }
+
+  const direction =
+    Number(projectile.vx) < 0 ? -1 : 1;
+
+  if (projectile.kind === "wind") {
+    ctx.save();
+
+    ctx.translate(x, y);
+    ctx.scale(direction, 1);
+
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = "#8ff";
+
+    ctx.strokeStyle = "#b8ffff";
+    ctx.lineWidth = 7;
+
+    ctx.beginPath();
+    ctx.arc(
+      0,
+      0,
+      35,
+      -0.9,
+      0.9
+    );
+
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+
+    return;
+  }
+
+  // Generic projectile
+  ctx.beginPath();
+  ctx.arc(
+    x,
+    y,
+    10,
     0,
     Math.PI * 2
   );
 
-  ctx.stroke();
-
-
-  /* body */
-
-  ctx.beginPath();
-
-  ctx.moveTo(
-    0,
-    -84
-  );
-
-  ctx.lineTo(
-    0,
-    -20
-  );
-
-  ctx.stroke();
-
-
-  /* legs */
-
-  ctx.beginPath();
-
-  ctx.moveTo(
-    0,
-    -20
-  );
-
-  ctx.lineTo(
-    -30,
-    0
-  );
-
-  ctx.lineTo(
-    -42,
-    43
-  );
-
-  ctx.moveTo(
-    0,
-    -20
-  );
-
-  ctx.lineTo(
-    30,
-    0
-  );
-
-  ctx.lineTo(
-    42,
-    43
-  );
-
-  ctx.stroke();
-
-
-  /* arms */
-
-  ctx.beginPath();
-
-  ctx.moveTo(
-    0,
-    -72
-  );
-
-  if (
-    player.state ===
-    "attack"
-  ) {
-
-    ctx.lineTo(
-      82,
-      -85
-    );
-
-  } else if (
-    player.state ===
-    "kick"
-  ) {
-
-    ctx.lineTo(
-      38,
-      -35
-    );
-
-  } else {
-
-    ctx.lineTo(
-      43,
-      -38
-    );
-  }
-
-  ctx.moveTo(
-    0,
-    -72
-  );
-
-  if (
-    player.block
-  ) {
-
-    ctx.lineTo(
-      45,
-      -100
-    );
-
-  } else {
-
-    ctx.lineTo(
-      -43,
-      -38
-    );
-  }
-
-  ctx.stroke();
-
-
-  /* block shield */
-
-  if (
-    player.block
-  ) {
-
-    ctx.strokeStyle =
-      "rgba(100,190,255,.95)";
-
-    ctx.lineWidth =
-      5;
-
-    ctx.beginPath();
-
-    ctx.arc(
-      15,
-      -75,
-      62,
-      -.9,
-      .9
-    );
-
-    ctx.stroke();
-  }
-
-
-  /* invulnerability */
-
-  if (
-    player.invulnerable > 0
-  ) {
-
-    ctx.strokeStyle =
-      "rgba(255,255,255,.8)";
-
-    ctx.lineWidth =
-      3;
-
-    ctx.beginPath();
-
-    ctx.arc(
-      0,
-      -55,
-      82,
-      0,
-      Math.PI * 2
-    );
-
-    ctx.stroke();
-  }
-
-
-  ctx.restore();
-
-
-  /* name */
-
-  ctx.save();
-
-  ctx.textAlign =
-    "center";
-
-  ctx.font =
-    "bold 13px Arial";
-
-  ctx.fillStyle =
-    "rgba(255,255,255,.7)";
-
-  ctx.fillText(
-    `P${id}`,
-    player.x,
-    player.y - 155
-  );
-
-  ctx.restore();
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
 }
 
 
-/* FIRE AURA */
+// --------------------------------------------------
+// EFFECTS
+// --------------------------------------------------
 
-function drawFireAura() {
-
-  for (
-    let i = 0;
-    i < 12;
-    i++
-  ) {
-
-    const angle =
-      Math.random() *
-      Math.PI * 2;
-
-    const radius =
-      35 +
-      Math.random() * 40;
-
-    ctx.fillStyle =
-      `rgba(255,${80 + Math.random() * 100},20,.65)`;
-
-    ctx.beginPath();
-
-    ctx.arc(
-      Math.cos(angle) *
-        radius,
-      -65 +
-        Math.sin(angle) *
-          radius,
-      4 +
-        Math.random() * 7,
-      0,
-      Math.PI * 2
-    );
-
-    ctx.fill();
+function processEvents(events) {
+  for (const event of events) {
+    spawnEffect(event);
   }
 }
 
+function spawnEffect(event) {
+  if (!event) return;
 
-/* DASH AURA */
+  const effect = {
+    type: event.type,
+    x: Number(event.x || 0),
+    y: Number(event.y || 0),
+    direction: Number(event.direction || 1),
+    life: 0.45,
+    maxLife: 0.45,
+    particles: []
+  };
 
-function drawDashAura() {
+  if (event.type === "hit") {
+    effect.life = 0.3;
+    effect.maxLife = 0.3;
 
-  ctx.strokeStyle =
-    "rgba(100,190,255,.8)";
+    for (let i = 0; i < 12; i++) {
+      const angle =
+        Math.random() * Math.PI * 2;
 
-  ctx.lineWidth =
-    5;
+      const speed =
+        50 + Math.random() * 180;
 
-  for (
-    let i = 0;
-    i < 5;
-    i++
-  ) {
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-      -20 -
-        i * 20,
-      -55
-    );
-
-    ctx.lineTo(
-      -80 -
-        i * 25,
-      -55
-    );
-
-    ctx.stroke();
+      effect.particles.push({
+        x: 0,
+        y: 0,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed
+      });
+    }
   }
+
+  visuals.push(effect);
 }
 
-
-/* WIND AURA */
-
-function drawWindAura() {
-
-  ctx.strokeStyle =
-    "rgba(130,220,255,.8)";
-
-  ctx.lineWidth =
-    4;
-
-  for (
-    let i = 0;
-    i < 4;
-    i++
-  ) {
-
-    ctx.beginPath();
-
-    ctx.arc(
-      20,
-      -70,
-      35 + i * 15,
-      -.8,
-      .8
-    );
-
-    ctx.stroke();
-  }
-}
-
-
-/* EFFECT DRAWING */
-
-function drawEffects(
-  dt
-) {
-
-  for (
-    const effect
-    of effects
-  ) {
+function updateVisuals(dt) {
+  for (let i = visuals.length - 1; i >= 0; i--) {
+    const effect = visuals[i];
 
     effect.life -= dt;
 
+    if (effect.type === "hit") {
+      for (const p of effect.particles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+      }
+    }
+
+    if (effect.life <= 0) {
+      visuals.splice(i, 1);
+    }
+  }
+}
+
+function drawVisuals() {
+  for (const effect of visuals) {
+    const progress =
+      1 - effect.life / effect.maxLife;
+
     const alpha =
-      Math.max(
-        0,
-        effect.life /
-          effect.maxLife
-      );
+      Math.max(0, 1 - progress);
 
     ctx.save();
 
-    ctx.globalAlpha =
-      alpha;
+    ctx.globalAlpha = alpha;
 
-
-    if (
-      effect.type ===
-      "hit"
-    ) {
-
-      ctx.fillStyle =
-        "#ffffff";
-
-      ctx.font =
-        "bold 26px Arial";
-
-      ctx.textAlign =
-        "center";
-
-      ctx.fillText(
-        `-${effect.damage}`,
+    if (effect.type === "fire") {
+      ctx.translate(
         effect.x,
-        effect.y -
-          (1 - alpha) * 30
+        effect.y
       );
 
+      const radius =
+        25 + progress * 50;
 
-      for (
-        const particle
-        of effect.particles
-      ) {
+      const gradient = ctx.createRadialGradient(
+        0,
+        0,
+        5,
+        0,
+        0,
+        radius
+      );
 
-        particle.x +=
-          particle.vx *
-          dt;
+      gradient.addColorStop(0, "#fff");
+      gradient.addColorStop(0.25, "#ffd85c");
+      gradient.addColorStop(0.65, "#ff6a2a");
+      gradient.addColorStop(1, "rgba(255,40,0,0)");
 
-        particle.y +=
-          particle.vy *
-          dt;
+      ctx.fillStyle = gradient;
 
-        particle.vy +=
-          600 * dt;
+      ctx.beginPath();
+      ctx.arc(
+        0,
+        0,
+        radius,
+        0,
+        Math.PI * 2
+      );
 
-        ctx.fillStyle =
-          "white";
+      ctx.fill();
+    }
 
-        ctx.fillRect(
-          particle.x,
-          particle.y,
-          5,
-          5
+    else if (effect.type === "dash") {
+      ctx.translate(
+        effect.x,
+        effect.y
+      );
+
+      ctx.strokeStyle = "#7de9ff";
+      ctx.lineWidth = 8;
+
+      for (let i = 0; i < 7; i++) {
+        ctx.beginPath();
+
+        ctx.moveTo(
+          -effect.direction * i * 20,
+          -25 + i * 8
         );
+
+        ctx.lineTo(
+          -effect.direction * (100 + i * 15),
+          -25 + i * 8
+        );
+
+        ctx.stroke();
       }
-
     }
 
-
-    if (
-      effect.type ===
-      "fire"
-    ) {
-
-      ctx.font =
-        "60px Arial";
-
-      ctx.textAlign =
-        "center";
-
-      ctx.fillText(
-        "🔥",
+    else if (effect.type === "wind") {
+      ctx.translate(
         effect.x,
         effect.y
       );
-    }
 
-
-    if (
-      effect.type ===
-      "dash"
-    ) {
-
-      ctx.font =
-        "55px Arial";
-
-      ctx.textAlign =
-        "center";
-
-      ctx.fillText(
-        "⚡",
-        effect.x,
-        effect.y
+      ctx.scale(
+        effect.direction,
+        1
       );
-    }
 
-
-    if (
-      effect.type ===
-      "wind"
-    ) {
-
-      ctx.font =
-        "55px Arial";
-
-      ctx.textAlign =
-        "center";
-
-      ctx.fillText(
-        "🌪",
-        effect.x,
-        effect.y
-      );
-    }
-
-
-    if (
-      effect.type ===
-      "windHit"
-    ) {
-
-      ctx.strokeStyle =
-        "rgba(150,230,255,.9)";
-
-      ctx.lineWidth =
-        7;
+      ctx.strokeStyle = "#bfffff";
+      ctx.lineWidth = 8;
 
       ctx.beginPath();
 
       ctx.arc(
+        0,
+        0,
+        35 + progress * 60,
+        -1,
+        1
+      );
+
+      ctx.stroke();
+    }
+
+    else if (effect.type === "hit") {
+      ctx.translate(
         effect.x,
-        effect.y,
-        55 *
-          (1 - alpha),
+        effect.y
+      );
+
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 4;
+
+      for (const p of effect.particles) {
+        ctx.beginPath();
+
+        ctx.moveTo(
+          p.x,
+          p.y
+        );
+
+        ctx.lineTo(
+          p.x - p.vx * 0.035,
+          p.y - p.vy * 0.035
+        );
+
+        ctx.stroke();
+      }
+
+      ctx.beginPath();
+
+      ctx.arc(
+        0,
+        0,
+        15 + progress * 45,
         0,
         Math.PI * 2
       );
@@ -1870,69 +1113,64 @@ function drawEffects(
 
     ctx.restore();
   }
-
-  effects =
-    effects.filter(
-      effect =>
-        effect.life > 0
-    );
 }
 
 
-/* EFFECT CREATION FROM SERVER */
+// --------------------------------------------------
+// LOCAL FALLBACK CHARACTERS
+// --------------------------------------------------
 
-function processEffects() {
+function drawFallbackCharacters() {
+  // This guarantees that the canvas isn't empty while
+  // waiting for the first server state.
 
-  for (
-    const effect
-    of localEffects
-  ) {
-    createEffect(
-      effect
-    );
-  }
+  const p1 = {
+    role: "P1",
+    x: 300,
+    y: 510,
+    hp: 100,
+    facing: 1,
+    blocking: false,
+    attackTimer: 0,
+    dashTimer: 0
+  };
 
-  localEffects = [];
+  const p2 = {
+    role: "P2",
+    x: 900,
+    y: 510,
+    hp: 100,
+    facing: -1,
+    blocking: false,
+    attackTimer: 0,
+    dashTimer: 0
+  };
+
+  drawStickman(p1);
+  drawStickman(p2);
 }
 
 
-/* UPDATE */
+// --------------------------------------------------
+// RENDER LOOP
+// --------------------------------------------------
 
-function update(dt) {
-
-  if (
-    running
-  ) {
-
-    updateInput();
-
-    animationTime +=
-      dt;
-  }
-
-  processEffects();
-
-  drawEffects(
-    dt
+function render(now) {
+  const dt = Math.min(
+    0.05,
+    (now - lastFrame) / 1000
   );
-}
 
+  lastFrame = now;
 
-/* DRAW */
+  resizeIfNeeded();
 
-function draw() {
-
-  const dpr =
-    Math.min(
-      2,
-      window.devicePixelRatio || 1
-    );
-
+  // Clear using actual CSS canvas size
   ctx.setTransform(
-    dpr,
+    1,
     0,
     0,
-    dpr,
+    1,
     0,
     0
   );
@@ -1944,207 +1182,62 @@ function draw() {
     canvas.clientHeight
   );
 
-  beginWorld();
+  setupWorldTransform();
 
   drawArena();
 
-  drawProjectiles();
-
-  drawPlayer(
-    players[1],
-    1
-  );
-
-  drawPlayer(
-    players[2],
-    2
-  );
-}
-
-
-/* MAIN LOOP */
-
-let previous =
-  performance.now();
-
-function loop(now) {
-
-  const dt =
-    Math.min(
-      .033,
-      (now - previous) /
-        1000
-    );
-
-  previous =
-    now;
-
-  update(dt);
-
-  draw();
-
-  requestAnimationFrame(
-    loop
-  );
-}
-
-requestAnimationFrame(
-  loop
-);
-
-
-/* ROUND OVER */
-
-function showRoundOver(
-  winner
-) {
-
-  running = false;
-
-  gameOverlay.hidden =
-    false;
+  // IMPORTANT:
+  // Draw fallback characters first.
+  // Then replace them with real server characters.
 
   if (
-    winner === 0
+    !state ||
+    !state.players ||
+    !state.players.P1 ||
+    !state.players.P2
   ) {
-
-    winnerText.textContent =
-      "DRAW";
-
-  } else if (
-    winner === myPlayer
-  ) {
-
-    winnerText.textContent =
-      "🏆 YOU WIN";
-
+    drawFallbackCharacters();
   } else {
+    const p1 = state.players.P1;
+    const p2 = state.players.P2;
 
-    winnerText.textContent =
-      "💀 YOU LOSE";
+    drawStickman(p1);
+    drawStickman(p2);
+
+    for (const projectile of state.projectiles || []) {
+      drawProjectile(projectile);
+    }
   }
 
-  roundText.textContent =
-    "Both players can press REMATCH.";
+  updateVisuals(dt);
+  drawVisuals();
+
+  requestAnimationFrame(render);
 }
 
+let previousCanvasWidth = 0;
+let previousCanvasHeight = 0;
 
-/* REMATCH */
-
-rematchButton.addEventListener(
-  "click",
-  () => {
-
-    send({
-      type:
-        "rematch"
-    });
-
-    rematchButton.disabled =
-      true;
-
-    roundText.textContent =
-      "Waiting for the other player...";
-  }
-);
-
-
-/* LEAVE */
-
-backButton.addEventListener(
-  "click",
-  () => {
-
-    location.reload();
-
-  }
-);
-
-
-/* CREATE ROOM */
-
-createRoomButton.addEventListener(
-  "click",
-  () => {
-
-    if (!connected) {
-
-      lobbyStatus.textContent =
-        "Connecting to server...";
-
-      return;
-    }
-
-    send({
-      type:
-        "create"
-    });
-  }
-);
-
-
-/* SHOW JOIN */
-
-showJoinButton.addEventListener(
-  "click",
-  () => {
-
-    joinPanel.hidden =
-      false;
-
-    roomInput.focus();
-  }
-);
-
-
-/* JOIN */
-
-joinRoomButton.addEventListener(
-  "click",
-  joinRoom
-);
-
-roomInput.addEventListener(
-  "keydown",
-  event => {
-
-    if (
-      event.key ===
-      "Enter"
-    ) {
-      joinRoom();
-    }
-  }
-);
-
-function joinRoom() {
-
-  const code =
-    roomInput.value
-      .trim()
-      .toUpperCase();
+function resizeIfNeeded() {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
 
   if (
-    code.length !== 6
+    width !== previousCanvasWidth ||
+    height !== previousCanvasHeight
   ) {
+    previousCanvasWidth = width;
+    previousCanvasHeight = height;
 
-    lobbyStatus.textContent =
-      "Room codes contain 6 characters.";
-
-    return;
+    resizeCanvas();
   }
-
-  send({
-    type:
-      "join",
-
-    code
-  });
 }
 
+requestAnimationFrame(render);
 
-/* INITIAL */
 
-resizeCanvas();
+// --------------------------------------------------
+// START
+// --------------------------------------------------
 
 connect();
