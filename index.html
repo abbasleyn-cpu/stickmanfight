@@ -1,96 +1,81 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
 
   <meta
     name="viewport"
-    content="
-      width=device-width,
-      initial-scale=1,
-      maximum-scale=1,
-      user-scalable=no,
-      viewport-fit=cover
-    "
-  >
+    content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+  />
 
   <title>Stickman Fight</title>
 
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
 
 <div id="app">
 
-  <!-- HEADER -->
-
   <header class="topbar">
 
-    <div class="brand">
-      <span>STICKMAN</span>
-      <strong>FIGHT</strong>
+    <div class="logo">
+      STICKMAN <span>FIGHT</span>
     </div>
 
-    <div id="connectionStatus">
-      CONNECTING
+    <div id="connection" class="connection">
+      ● CONNECTING...
     </div>
 
   </header>
 
 
-  <!-- LOBBY -->
+  <main>
 
-  <section id="lobby">
+    <!-- ================= LOBBY ================= -->
 
-    <div class="hero">
+    <section id="lobby" class="panel">
 
-      <div class="stickmanLogo">
+      <div class="hero">
 
-        <div class="head"></div>
+        <div class="badge">
+          ONLINE 1v1
+        </div>
 
-        <div class="body"></div>
+        <h1>
+          STICKMAN<br />
+          <span>FIGHT</span>
+        </h1>
 
-        <div class="arm arm1"></div>
-        <div class="arm arm2"></div>
-
-        <div class="leg leg1"></div>
-        <div class="leg leg2"></div>
+        <p>
+          Create a room and fight your opponent online.
+        </p>
 
       </div>
 
-      <h1>
-        STICKMAN
-        <span>FIGHT</span>
-      </h1>
 
-      <p>
-        ONLINE 1V1 ARENA
-      </p>
+      <div class="lobby-buttons">
 
-    </div>
+        <button
+          id="createBtn"
+          class="primary-btn"
+        >
+          CREATE ROOM
+        </button>
 
+        <button
+          id="showJoinBtn"
+          class="secondary-btn"
+        >
+          JOIN ROOM
+        </button>
 
-    <div class="lobbyCard">
-
-      <button
-        id="createRoom"
-        class="mainButton"
-      >
-        CREATE ROOM
-      </button>
-
-      <button
-        id="showJoin"
-        class="secondaryButton"
-      >
-        JOIN ROOM
-      </button>
+      </div>
 
 
       <div
-        id="joinPanel"
+        id="joinBox"
+        class="join-box"
         hidden
       >
 
@@ -101,11 +86,11 @@
           placeholder="ROOM CODE"
           autocomplete="off"
           spellcheck="false"
-        >
+        />
 
         <button
-          id="joinRoom"
-          class="mainButton"
+          id="joinBtn"
+          class="primary-btn"
         >
           JOIN
         </button>
@@ -113,251 +98,267 @@
       </div>
 
 
-      <div id="roomInfo"></div>
+      <div
+        id="roomInfo"
+        class="room-info"
+        hidden
+      >
 
-      <div id="lobbyStatus">
-        Create a room and invite another player.
-      </div>
-
-    </div>
-
-
-    <div class="featureRow">
-
-      <div class="feature">
-        <b>👊</b>
-        COMBAT
-      </div>
-
-      <div class="feature">
-        <b>🔥</b>
-        POWERS
-      </div>
-
-      <div class="feature">
-        <b>⚡</b>
-        DASH
-      </div>
-
-      <div class="feature">
-        <b>📱</b>
-        MOBILE
-      </div>
-
-    </div>
-
-  </section>
-
-
-  <!-- GAME -->
-
-  <section
-    id="game"
-    hidden
-  >
-
-    <!-- HUD -->
-
-    <div class="hud">
-
-      <div class="fighterHud">
-
-        <div class="fighterTitle">
-          PLAYER 1
+        <div class="room-title">
+          ROOM
         </div>
 
-        <div class="healthBar">
-          <div id="hp1"></div>
+        <div class="room-code-row">
+
+          <div id="roomCode" class="room-code">
+            ------
+          </div>
+
+          <button id="copyBtn">
+            COPY
+          </button>
+
         </div>
 
       </div>
 
 
-      <div class="roundTimer">
-        <span id="timer">
-          90
-        </span>
+      <div id="status" class="status">
+        Connecting to server...
       </div>
 
 
-      <div class="fighterHud fighter2">
+      <div class="controls-help">
 
-        <div class="fighterTitle">
-          PLAYER 2
+        <h3>PC CONTROLS</h3>
+
+        <p>
+          <strong>P1</strong> —
+          A / D move,
+          W jump,
+          F punch,
+          R kick,
+          G block,
+          1 / 2 / 3 abilities
+        </p>
+
+        <p>
+          <strong>P2</strong> —
+          ← / → move,
+          ↑ jump,
+          L punch,
+          O kick,
+          K block,
+          8 / 9 / 0 abilities
+        </p>
+
+      </div>
+
+    </section>
+
+
+
+    <!-- ================= GAME ================= -->
+
+    <section id="game" hidden>
+
+      <div class="game-top">
+
+        <div class="player-card p1-card">
+
+          <div class="player-name">
+            PLAYER 1
+          </div>
+
+          <div class="hp-bar">
+            <div
+              id="p1Hp"
+              class="hp-fill p1-fill"
+              style="width:100%"
+            ></div>
+          </div>
+
+          <div
+            id="p1HpText"
+            class="hp-text"
+          >
+            100 HP
+          </div>
+
         </div>
 
-        <div class="healthBar">
-          <div id="hp2"></div>
+
+        <div class="timer-box">
+
+          <div id="timer">
+            60
+          </div>
+
+          <small>
+            <span id="role">P1</span>
+          </small>
+
+        </div>
+
+
+        <div class="player-card p2-card">
+
+          <div class="player-name">
+            PLAYER 2
+          </div>
+
+          <div class="hp-bar">
+            <div
+              id="p2Hp"
+              class="hp-fill p2-fill"
+              style="width:100%"
+            ></div>
+          </div>
+
+          <div
+            id="p2HpText"
+            class="hp-text"
+          >
+            100 HP
+          </div>
+
         </div>
 
       </div>
 
-    </div>
 
+      <div class="arena-wrap">
 
-    <div id="roomCodeDisplay">
-      ROOM
-    </div>
+        <canvas id="gameCanvas"></canvas>
 
-
-    <!-- ARENA -->
-
-    <canvas id="arena"></canvas>
-
-
-    <!-- PC HELP -->
-
-    <div id="pcControls">
-
-      <span id="controlText">
-        Controls
-      </span>
-
-    </div>
-
-
-    <!-- MOBILE -->
-
-    <div id="mobileControls">
-
-      <div class="leftControls">
-
-        <button
-          data-control="left"
-          class="controlButton"
+        <div
+          id="winOverlay"
+          class="win-overlay"
+          hidden
         >
-          ◀
-        </button>
 
-        <button
-          data-control="jump"
-          class="controlButton"
-        >
-          ▲
-        </button>
+          <div class="win-box">
 
-        <button
-          data-control="right"
-          class="controlButton"
-        >
-          ▶
-        </button>
+            <div
+              id="winnerText"
+              class="winner-text"
+            >
+              YOU WIN!
+            </div>
 
-      </div>
+            <button
+              id="rematchBtn"
+              class="primary-btn"
+            >
+              REMATCH
+            </button>
 
+          </div>
 
-      <div class="rightControls">
-
-        <button
-          data-action="attack"
-          class="actionButton"
-        >
-          👊
-        </button>
-
-        <button
-          data-control="block"
-          class="actionButton"
-        >
-          🛡
-        </button>
-
-        <button
-          data-action="kick"
-          class="actionButton"
-        >
-          🦵
-        </button>
-
-        <button
-          data-ability="fire"
-          class="abilityButton fireButton"
-        >
-          🔥
-        </button>
-
-        <button
-          data-ability="dash"
-          class="abilityButton dashButton"
-        >
-          ⚡
-        </button>
-
-        <button
-          data-ability="wind"
-          class="abilityButton windButton"
-        >
-          🌪
-        </button>
-
-      </div>
-
-    </div>
-
-
-    <!-- ABILITY STATUS -->
-
-    <div id="abilityStatus">
-
-      <span id="fireCD">
-        🔥 READY
-      </span>
-
-      <span id="dashCD">
-        ⚡ READY
-      </span>
-
-      <span id="windCD">
-        🌪 READY
-      </span>
-
-    </div>
-
-
-    <!-- GAME OVER -->
-
-    <div
-      id="gameOverlay"
-      hidden
-    >
-
-      <div class="gameOverCard">
-
-        <div id="winnerText">
-          YOU WIN
         </div>
 
-        <div id="roundText">
-          ROUND OVER
+      </div>
+
+
+      <div
+        id="gameStatus"
+        class="game-status"
+      >
+        FIGHT!
+      </div>
+
+
+      <!-- ================= MOBILE CONTROLS ================= -->
+
+      <div id="mobileControls">
+
+        <div class="mobile-row movement-row">
+
+          <button
+            class="control-btn movement"
+            data-input="left"
+          >
+            ◀
+          </button>
+
+          <button
+            class="control-btn movement"
+            data-input="right"
+          >
+            ▶
+          </button>
+
+          <button
+            class="control-btn jump"
+            data-input="jump"
+          >
+            ▲
+          </button>
+
         </div>
 
-        <button
-          id="rematchButton"
-          class="mainButton"
-        >
-          REMATCH
-        </button>
 
-        <button
-          id="backButton"
-          class="secondaryButton"
-        >
-          LEAVE
-        </button>
+        <div class="mobile-row action-row">
+
+          <button
+            class="control-btn attack"
+            data-action="attack"
+          >
+            PUNCH
+          </button>
+
+          <button
+            class="control-btn attack"
+            data-action="kick"
+          >
+            KICK
+          </button>
+
+          <button
+            class="control-btn block"
+            data-input="block"
+          >
+            BLOCK
+          </button>
+
+        </div>
+
+
+        <div class="mobile-row ability-row">
+
+          <button
+            class="control-btn ability fire"
+            data-action="fire"
+          >
+            🔥 FIRE
+          </button>
+
+          <button
+            class="control-btn ability dash"
+            data-action="dash"
+          >
+            ⚡ DASH
+          </button>
+
+          <button
+            class="control-btn ability wind"
+            data-action="wind"
+          >
+            🌪 WIND
+          </button>
+
+        </div>
 
       </div>
 
-    </div>
+    </section>
 
-  </section>
+  </main>
 
 </div>
 
 
-<script
-  type="module"
-  src="game.js"
-></script>
+<script type="module" src="game.js"></script>
 
 </body>
 </html>
