@@ -9,6 +9,30 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
 
+const WORLD = {
+  width: 1200,
+  height: 600,
+  ground: 510
+};
+
+const PHYSICS = {
+  runSpeed: 300,
+  blockSpeed: 150,
+  gravity: 1800,
+  jumpVelocity: -720
+};
+
+const ROUND_TIME = 60;
+
+const rooms = new Map();
+
+let nextProjectileId = 1;
+
+
+/* =====================================================
+   STATIC FILE SERVER
+===================================================== */
+
 const FILES = {
   "/": "index.html",
   "/index.html": "index.html",
@@ -29,64 +53,61 @@ const server = http.createServer((req, res) => {
       `http://${req.headers.host || "localhost"}`
     );
 
-    const filename = FILES[url.pathname];
+    const file = FILES[url.pathname];
 
-    if (!filename) {
+    if (!file) {
       res.writeHead(404);
       res.end("Not found");
       return;
     }
 
-    const fullPath = path.join(__dirname, filename);
+    const fullPath = path.resolve(
+      __dirname,
+      file
+    );
 
-    fs.readFile(fullPath, (err, data) => {
-      if (err) {
-        console.error(err);
-        res.writeHead(500);
-        res.end("Server error");
-        return;
+    fs.readFile(
+      fullPath,
+      (error, data) => {
+        if (error) {
+          console.error(error);
+          res.writeHead(500);
+          res.end("Server error");
+          return;
+        }
+
+        res.writeHead(200, {
+          "Content-Type":
+            MIME[path.extname(fullPath)] ||
+            "application/octet-stream"
+        });
+
+        res.end(data);
       }
-
-      res.writeHead(200, {
-        "Content-Type":
-          MIME[path.extname(fullPath)] ||
-          "application/octet-stream"
-      });
-
-      res.end(data);
-    });
-  } catch {
+    );
+  } catch (error) {
+    console.error(error);
     res.writeHead(500);
     res.end("Server error");
   }
 });
 
+
+/* =====================================================
+   WEBSOCKET
+===================================================== */
+
 const wss = new WebSocketServer({
   server
 });
 
-const WORLD = {
-  width: 1200,
-  height: 600,
-  ground: 510
-};
 
-const PHYSICS = {
-  runSpeed: 300,
-  blockSpeed: 150,
-  gravity: 1800,
-  jumpVelocity: -720
-};
-
-const ROUND_TIME = 60;
-
-const rooms = new Map();
+/* =====================================================
+   ROOM CODES
+===================================================== */
 
 const ROOM_CHARS =
   "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-let projectileId = 1;
-
 
 function randomRoomCode() {
   let code;
@@ -98,7 +119,8 @@ function randomRoomCode() {
       code +=
         ROOM_CHARS[
           Math.floor(
-            Math.random() * ROOM_CHARS.length
+            Math.random() *
+            ROOM_CHARS.length
           )
         ];
     }
@@ -107,6 +129,10 @@ function randomRoomCode() {
   return code;
 }
 
+
+/* =====================================================
+   INPUT
+===================================================== */
 
 function emptyInput() {
   return {
@@ -118,25 +144,27 @@ function emptyInput() {
 }
 
 
-function createPlayer(role, options = {}) {
-  const isCPU =
-    options.bot === true;
+/* =====================================================
+   PLAYER
+===================================================== */
 
+function makePlayer(
+  role,
+  bot = false
+) {
   return {
     role,
 
-    bot: isCPU,
+    bot,
 
-    connected:
-      options.connected === true,
+    connected: false,
 
     x:
       role === "P1"
         ? 300
         : 900,
 
-    y:
-      WORLD.ground,
+    y: WORLD.ground,
 
     vx: 0,
     vy: 0,
@@ -154,9 +182,11 @@ function createPlayer(role, options = {}) {
     jumpQueued: false,
 
     onGround: true,
+
     blocking: false,
 
     attackTimer: 0,
+
     dashTimer: 0,
     dashHit: false,
 
@@ -164,28 +194,32 @@ function createPlayer(role, options = {}) {
     invuln: 0,
 
     cooldowns: {
+      punch: 0,
+      kick: 0,
       fire: 0,
       dash: 0,
-      wind: 0,
-      punch: 0,
-      kick: 0
+      wind: 0
     },
 
     ai: {
-      decisionTimer: 0,
       attackTimer: 0.7,
       abilityTimer: 1.5,
-      jumpTimer: 1.0
+      jumpTimer: 1,
+      decisionTimer: 0
     }
   };
 }
 
 
-function createRoom(mode, rounds) {
-  const isCPU =
-    mode === "cpu";
+/* =====================================================
+   ROOM
+===================================================== */
 
-  return {
+function makeRoom(
+  mode,
+  rounds
+) {
+  const room = {
     code: randomRoomCode(),
 
     mode,
@@ -195,26 +229,25 @@ function createRoom(mode, rounds) {
         ? 10
         : 5,
 
-    players: {
-      P1: createPlayer("P1", {
-        connected: false,
-        bot: false
-      }),
-
-      P2: createPlayer("P2", {
-        connected: isCPU,
-        bot: isCPU
-      })
+    clients: {
+      P1: null,
+      P2: null
     },
 
-    clients: new Set(),
-
-    round: 1,
+    players: {
+      P1: makePlayer("P1", false),
+      P2: makePlayer(
+        "P2",
+        mode === "cpu"
+      )
+    },
 
     score: {
       P1: 0,
       P2: 0
     },
+
+    round: 1,
 
     phase: "lobby",
 
@@ -223,7 +256,6 @@ function createRoom(mode, rounds) {
     time: ROUND_TIME,
 
     roundWinner: null,
-
     matchWinner: null,
 
     projectiles: [],
@@ -232,35 +264,87 @@ function createRoom(mode, rounds) {
 
     nextRoundAt: 0
   };
+
+  if (mode === "cpu") {
+    room.players.P2.connected = true;
+  }
+
+  return room;
 }
 
 
-function send(ws, message) {
+/* =====================================================
+   SOCKET HELPERS
+===================================================== */
+
+function send(ws, data) {
   if (
     ws &&
-    ws.readyState ===
-      WebSocket.OPEN
+    ws.readyState === WebSocket.OPEN
   ) {
     ws.send(
-      JSON.stringify(message)
+      JSON.stringify(data)
     );
   }
 }
 
 
-function broadcast(room, message) {
-  for (const ws of room.clients) {
-    send(ws, message);
-  }
+function sendState(room) {
+  const message = makeState(room);
+
+  send(
+    room.clients.P1,
+    message
+  );
+
+  send(
+    room.clients.P2,
+    message
+  );
+
+  room.events = [];
 }
 
 
-function getOpponent(room, player) {
-  return player.role === "P1"
-    ? room.players.P2
-    : room.players.P1;
+function broadcastRoom(room) {
+  const message = {
+    type: "room",
+
+    code: room.code,
+
+    mode: room.mode,
+
+    started: room.started,
+
+    phase: room.phase,
+
+    connected:
+      Number(
+        room.players.P1.connected
+      ) +
+      Number(
+        room.players.P2.connected
+      ),
+
+    roundsToWin:
+      room.roundsToWin
+  };
+
+  send(
+    room.clients.P1,
+    message
+  );
+
+  send(
+    room.clients.P2,
+    message
+  );
 }
 
+
+/* =====================================================
+   STATE
+===================================================== */
 
 function publicPlayer(player) {
   return {
@@ -268,7 +352,8 @@ function publicPlayer(player) {
 
     bot: player.bot,
 
-    connected: player.connected,
+    connected:
+      player.connected,
 
     x: player.x,
     y: player.y,
@@ -276,13 +361,17 @@ function publicPlayer(player) {
     vx: player.vx,
     vy: player.vy,
 
-    facing: player.facing,
+    facing:
+      player.facing,
 
-    hp: player.hp,
+    hp:
+      player.hp,
 
-    blocking: player.blocking,
+    blocking:
+      player.blocking,
 
-    onGround: player.onGround,
+    onGround:
+      player.onGround,
 
     attackTimer:
       player.attackTimer,
@@ -290,7 +379,8 @@ function publicPlayer(player) {
     dashTimer:
       player.dashTimer,
 
-    stun: player.stun,
+    stun:
+      player.stun,
 
     cooldowns: {
       fire:
@@ -306,7 +396,7 @@ function publicPlayer(player) {
 }
 
 
-function stateMessage(room) {
+function makeState(room) {
   return {
     type: "state",
 
@@ -321,14 +411,18 @@ function stateMessage(room) {
       room.time
     ),
 
-    round: room.round,
+    round:
+      room.round,
 
     roundsToWin:
       room.roundsToWin,
 
     scores: {
-      P1: room.score.P1,
-      P2: room.score.P2
+      P1:
+        room.score.P1,
+
+      P2:
+        room.score.P2
     },
 
     roundWinner:
@@ -351,13 +445,24 @@ function stateMessage(room) {
 
     projectiles:
       room.projectiles.map(
-        (p) => ({
-          id: p.id,
-          kind: p.kind,
-          x: p.x,
-          y: p.y,
-          vx: p.vx,
-          vy: p.vy
+        (projectile) => ({
+          id:
+            projectile.id,
+
+          kind:
+            projectile.kind,
+
+          x:
+            projectile.x,
+
+          y:
+            projectile.y,
+
+          vx:
+            projectile.vx,
+
+          vy:
+            projectile.vy
         })
       ),
 
@@ -367,15 +472,9 @@ function stateMessage(room) {
 }
 
 
-function broadcastState(room) {
-  broadcast(
-    room,
-    stateMessage(room)
-  );
-
-  room.events = [];
-}
-
+/* =====================================================
+   RESET
+===================================================== */
 
 function resetPlayer(player) {
   player.x =
@@ -396,46 +495,79 @@ function resetPlayer(player) {
 
   player.hp = 100;
 
-  player.input = emptyInput();
+  player.input =
+    emptyInput();
 
-  player.previousJump = false;
-  player.jumpQueued = false;
+  player.previousJump =
+    false;
 
-  player.onGround = true;
-  player.blocking = false;
+  player.jumpQueued =
+    false;
 
-  player.attackTimer = 0;
+  player.onGround =
+    true;
 
-  player.dashTimer = 0;
-  player.dashHit = false;
+  player.blocking =
+    false;
 
-  player.stun = 0;
-  player.invuln = 0;
+  player.attackTimer =
+    0;
 
-  player.cooldowns.fire = 0;
-  player.cooldowns.dash = 0;
-  player.cooldowns.wind = 0;
-  player.cooldowns.punch = 0;
-  player.cooldowns.kick = 0;
+  player.dashTimer =
+    0;
 
-  player.ai.decisionTimer = 0;
-  player.ai.attackTimer = 0.5;
-  player.ai.abilityTimer = 1.2;
-  player.ai.jumpTimer = 0.8;
+  player.dashHit =
+    false;
+
+  player.stun =
+    0;
+
+  player.invuln =
+    0;
+
+  player.cooldowns.punch =
+    0;
+
+  player.cooldowns.kick =
+    0;
+
+  player.cooldowns.fire =
+    0;
+
+  player.cooldowns.dash =
+    0;
+
+  player.cooldowns.wind =
+    0;
+
+  player.ai.attackTimer =
+    0.7;
+
+  player.ai.abilityTimer =
+    1.5;
+
+  player.ai.jumpTimer =
+    1;
+
+  player.ai.decisionTimer =
+    0;
 }
 
 
 function startMatch(room) {
-  room.round = 1;
-
   room.score.P1 = 0;
   room.score.P2 = 0;
+
+  room.round = 1;
 
   room.roundWinner = null;
   room.matchWinner = null;
 
   room.projectiles = [];
 
+  room.time =
+    ROUND_TIME;
+
   resetPlayer(
     room.players.P1
   );
@@ -444,20 +576,22 @@ function startMatch(room) {
     room.players.P2
   );
 
-  room.time =
-    ROUND_TIME;
-
   room.phase =
     "fighting";
 
-  room.started = true;
+  room.started =
+    true;
 }
 
 
 function startNextRound(room) {
   room.round++;
 
-  room.roundWinner = null;
+  room.roundWinner =
+    null;
+
+  room.matchWinner =
+    null;
 
   room.projectiles = [];
 
@@ -475,59 +609,46 @@ function startNextRound(room) {
   room.phase =
     "fighting";
 
-  room.started = true;
+  room.started =
+    true;
 }
 
 
-function finishRound(room, winner) {
-  if (
-    room.phase !==
-    "fighting"
-  ) {
-    return;
-  }
+/* =====================================================
+   COMBAT
+===================================================== */
 
-  room.started = false;
-
-  room.phase =
-    "round_end";
-
-  room.roundWinner =
-    winner;
-
-  if (
-    winner === "P1" ||
-    winner === "P2"
-  ) {
-    room.score[winner]++;
-  }
-
-  room.projectiles = [];
-
-  const needed =
-    Math.ceil(
-      room.roundsToWin / 2
-    );
-
-  if (
-    winner !== "draw" &&
-    room.score[winner] >= needed
-  ) {
-    room.matchWinner =
-      winner;
-
-    room.phase =
-      "match_end";
-  } else {
-    room.nextRoundAt =
-      Date.now() + 2200;
-  }
+function getOpponent(
+  room,
+  player
+) {
+  return player.role === "P1"
+    ? room.players.P2
+    : room.players.P1;
 }
 
 
-function facingTarget(player, target) {
+function canFight(
+  room,
+  player
+) {
+  return (
+    room.started &&
+    room.phase === "fighting" &&
+    player.connected &&
+    player.hp > 0 &&
+    player.stun <= 0
+  );
+}
+
+
+function facingTarget(
+  player,
+  target
+) {
   const dx =
-    target.x - player.x;
+    target.x -
+    player.x;
 
   return (
     Math.sign(dx) ===
@@ -537,23 +658,12 @@ function facingTarget(player, target) {
 }
 
 
-function canFight(room, player) {
-  return (
-    room.phase === "fighting" &&
-    room.started &&
-    player.connected &&
-    player.hp > 0 &&
-    player.stun <= 0
-  );
-}
-
-
-function damage(
+function damagePlayer(
   room,
   attacker,
   target,
   amount,
-  attackType
+  type
 ) {
   if (
     !target.connected ||
@@ -563,13 +673,13 @@ function damage(
     return false;
   }
 
-  let actual =
+  let damage =
     amount;
 
   if (
     target.blocking
   ) {
-    actual =
+    damage =
       Math.ceil(
         amount * 0.25
       );
@@ -578,7 +688,7 @@ function damage(
   target.hp =
     Math.max(
       0,
-      target.hp - actual
+      target.hp - damage
     );
 
   target.invuln =
@@ -588,7 +698,7 @@ function damage(
 
   target.stun =
     target.blocking
-      ? 0.04
+      ? 0.05
       : 0.14;
 
   target.vx +=
@@ -607,9 +717,10 @@ function damage(
     y:
       target.y - 65,
 
-    damage: actual,
+    damage,
 
-    attackType
+    attackType:
+      type
   });
 
   if (
@@ -639,14 +750,14 @@ function punchOrKick(
     return;
   }
 
-  const cooldownName =
+  const cooldownKey =
     type === "punch"
       ? "punch"
       : "kick";
 
   if (
     player.cooldowns[
-      cooldownName
+      cooldownKey
     ] > 0
   ) {
     return;
@@ -664,7 +775,7 @@ function punchOrKick(
       : 0.25;
 
   player.cooldowns[
-    cooldownName
+    cooldownKey
   ] =
     type === "punch"
       ? 0.30
@@ -673,13 +784,13 @@ function punchOrKick(
   const distance =
     Math.abs(
       target.x -
-        player.x
+      player.x
     );
 
   const vertical =
     Math.abs(
       target.y -
-        player.y
+      player.y
     );
 
   const range =
@@ -695,7 +806,7 @@ function punchOrKick(
       target
     )
   ) {
-    damage(
+    damagePlayer(
       room,
       player,
       target,
@@ -754,13 +865,13 @@ function fireFist(
   const distance =
     Math.abs(
       target.x -
-        player.x
+      player.x
     );
 
   const vertical =
     Math.abs(
       target.y -
-        player.y
+      player.y
     );
 
   if (
@@ -771,7 +882,7 @@ function fireFist(
       target
     )
   ) {
-    damage(
+    damagePlayer(
       room,
       player,
       target,
@@ -782,7 +893,7 @@ function fireFist(
 }
 
 
-function dash(
+function lightningDash(
   room,
   player
 ) {
@@ -806,7 +917,7 @@ function dash(
     4;
 
   player.dashTimer =
-    0.30;
+    0.3;
 
   player.dashHit =
     false;
@@ -814,7 +925,7 @@ function dash(
   player.invuln =
     Math.max(
       player.invuln,
-      0.20
+      0.2
     );
 
   player.vx =
@@ -835,7 +946,7 @@ function dash(
 }
 
 
-function wind(
+function windSlash(
   room,
   player
 ) {
@@ -859,9 +970,11 @@ function wind(
     3;
 
   room.projectiles.push({
-    id: projectileId++,
+    id:
+      nextProjectileId++,
 
-    kind: "wind",
+    kind:
+      "wind",
 
     owner:
       player.role,
@@ -878,7 +991,8 @@ function wind(
 
     vy: 0,
 
-    life: 0.9,
+    life:
+      0.9,
 
     hit: false
   });
@@ -905,6 +1019,7 @@ function performAction(
   action
 ) {
   switch (action) {
+
     case "attack":
       punchOrKick(
         room,
@@ -929,14 +1044,14 @@ function performAction(
       break;
 
     case "dash":
-      dash(
+      lightningDash(
         room,
         player
       );
       break;
 
     case "wind":
-      wind(
+      windSlash(
         room,
         player
       );
@@ -945,11 +1060,15 @@ function performAction(
 }
 
 
-function setInput(
+/* =====================================================
+   INPUT
+===================================================== */
+
+function setPlayerInput(
   player,
   incoming
 ) {
-  const oldJump =
+  const previousJump =
     player.input.jump;
 
   const next =
@@ -985,7 +1104,7 @@ function setInput(
 
   if (
     next.jump &&
-    !oldJump
+    !previousJump
   ) {
     player.jumpQueued =
       true;
@@ -998,9 +1117,9 @@ function setInput(
 }
 
 
-/* =========================================================
-   CPU AI
-========================================================= */
+/* =====================================================
+   CPU
+===================================================== */
 
 function updateCPU(
   room,
@@ -1008,9 +1127,9 @@ function updateCPU(
   dt
 ) {
   if (
+    !cpu.bot ||
     !room.started ||
-    room.phase !==
-      "fighting"
+    room.phase !== "fighting"
   ) {
     cpu.input =
       emptyInput();
@@ -1028,22 +1147,20 @@ function updateCPU(
     return;
   }
 
-  cpu.ai.decisionTimer -= dt;
-  cpu.ai.attackTimer -= dt;
-  cpu.ai.abilityTimer -= dt;
-  cpu.ai.jumpTimer -= dt;
-
-
   const dx =
-    target.x - cpu.x;
+    target.x -
+    cpu.x;
 
   const distance =
     Math.abs(dx);
 
+  cpu.ai.attackTimer -= dt;
+  cpu.ai.abilityTimer -= dt;
+  cpu.ai.jumpTimer -= dt;
+  cpu.ai.decisionTimer -= dt;
 
-  /*
-    Always face the player.
-  */
+
+  /* Always face player */
 
   if (
     Math.abs(dx) > 3
@@ -1055,11 +1172,7 @@ function updateCPU(
   }
 
 
-  /*
-    Make the CPU movement continuous.
-    This fixes the old AI which could appear
-    frozen between decisions.
-  */
+  /* Movement */
 
   cpu.input.left =
     false;
@@ -1067,85 +1180,77 @@ function updateCPU(
   cpu.input.right =
     false;
 
+  cpu.input.block =
+    false;
+
+
+  if (
+    distance > 120
+  ) {
+    if (dx > 0) {
+      cpu.input.right =
+        true;
+    } else {
+      cpu.input.left =
+        true;
+    }
+  }
+
+
+  /* Sometimes retreat */
+
+  if (
+    distance < 80 &&
+    Math.random() < 0.02
+  ) {
+    if (dx > 0) {
+      cpu.input.left =
+        true;
+    } else {
+      cpu.input.right =
+        true;
+    }
+  }
+
+
+  /* Block incoming attack */
+
+  if (
+    distance < 135 &&
+    target.attackTimer > 0 &&
+    Math.random() < 0.45
+  ) {
+    cpu.input.block =
+      true;
+  }
+
+
+  /* Jump */
 
   cpu.input.jump =
     false;
 
-
-  /*
-    Move toward the player until
-    we're inside attack range.
-  */
-
-  if (
-    distance > 115
-  ) {
-    if (dx > 0) {
-      cpu.input.right =
-        true;
-    } else {
-      cpu.input.left =
-        true;
-    }
-  }
-
-
-  /*
-    Occasionally back away when very close.
-  */
-
-  if (
-    distance < 75 &&
-    Math.random() < 0.015
-  ) {
-    if (dx > 0) {
-      cpu.input.left =
-        true;
-    } else {
-      cpu.input.right =
-        true;
-    }
-  }
-
-
-  /*
-    Block sometimes.
-  */
-
-  cpu.input.block =
-    distance < 125 &&
-    target.attackTimer > 0 &&
-    Math.random() < 0.35;
-
-
-  /*
-    Jump.
-  */
-
   if (
     cpu.ai.jumpTimer <= 0 &&
     cpu.onGround &&
-    Math.random() < 0.75
+    Math.random() < 0.8
   ) {
     cpu.input.jump =
       true;
 
     cpu.ai.jumpTimer =
-      1.0 +
-      Math.random() *
-      1.5;
+      1 +
+      Math.random() * 1.5;
   }
 
 
-  /*
-    CPU attacks.
-  */
+  /* Attack */
 
   if (
     cpu.ai.attackTimer <= 0
   ) {
     if (
-      distance < 145
+      distance < 150
     ) {
       if (
         Math.random() < 0.55
@@ -1165,25 +1270,22 @@ function updateCPU(
     }
 
     cpu.ai.attackTimer =
-      0.25 +
-      Math.random() *
-      0.45;
+      0.3 +
+      Math.random() * 0.4;
   }
 
 
-  /*
-    CPU abilities.
-  */
+  /* Abilities */
 
   if (
     cpu.ai.abilityTimer <= 0
   ) {
-    const roll =
+    const random =
       Math.random();
 
     if (
       distance < 220 &&
-      roll < 0.40
+      random < 0.4
     ) {
       performAction(
         room,
@@ -1191,8 +1293,8 @@ function updateCPU(
         "fire"
       );
     } else if (
-      distance < 300 &&
-      roll < 0.70
+      distance < 320 &&
+      random < 0.7
     ) {
       performAction(
         room,
@@ -1208,19 +1310,17 @@ function updateCPU(
     }
 
     cpu.ai.abilityTimer =
-      1.0 +
-      Math.random() *
-      2;
+      1.2 +
+      Math.random() * 2;
   }
 
 
   /*
-    Jump must use edge detection.
+    Proper jump edge detection.
   */
 
   const oldJump =
     cpu.previousJump;
-
 
   if (
     cpu.input.jump &&
@@ -1230,10 +1330,8 @@ function updateCPU(
       true;
   }
 
-
   cpu.previousJump =
     cpu.input.jump;
-
 
   cpu.blocking =
     cpu.input.block &&
@@ -1242,9 +1340,9 @@ function updateCPU(
 }
 
 
-/* =========================================================
-   PLAYER PHYSICS
-========================================================= */
+/* =====================================================
+   PHYSICS
+===================================================== */
 
 function updatePlayer(
   room,
@@ -1262,29 +1360,27 @@ function updatePlayer(
     Math.max(
       0,
       player.attackTimer -
-        dt
+      dt
     );
-
 
   player.stun =
     Math.max(
       0,
       player.stun -
-        dt
+      dt
     );
-
 
   player.invuln =
     Math.max(
       0,
       player.invuln -
-        dt
+      dt
     );
 
 
   for (
-    const key
-    of Object.keys(
+    const key of
+    Object.keys(
       player.cooldowns
     )
   ) {
@@ -1292,7 +1388,7 @@ function updatePlayer(
       Math.max(
         0,
         player.cooldowns[key] -
-          dt
+        dt
       );
   }
 
@@ -1302,6 +1398,8 @@ function updatePlayer(
     player.onGround &&
     player.stun <= 0;
 
+
+  /* Jump */
 
   if (
     player.jumpQueued &&
@@ -1316,38 +1414,42 @@ function updatePlayer(
       false;
   }
 
-
   player.jumpQueued =
     false;
 
 
-  /*
-    Movement
-  */
+  /* Movement */
 
   if (
     player.dashTimer <= 0
   ) {
     let direction = 0;
 
-    if (player.input.left) {
+    if (
+      player.input.left
+    ) {
       direction--;
     }
 
-    if (player.input.right) {
+    if (
+      player.input.right
+    ) {
       direction++;
     }
+
 
     const speed =
       player.blocking
         ? PHYSICS.blockSpeed
         : PHYSICS.runSpeed;
 
+
     if (
       direction !== 0
     ) {
       player.vx =
-        direction * speed;
+        direction *
+        speed;
 
       player.facing =
         direction;
@@ -1361,9 +1463,7 @@ function updatePlayer(
   }
 
 
-  /*
-    Gravity
-  */
+  /* Gravity */
 
   player.vy +=
     PHYSICS.gravity *
@@ -1374,15 +1474,12 @@ function updatePlayer(
     player.vx *
     dt;
 
-
   player.y +=
     player.vy *
     dt;
 
 
-  /*
-    Dash
-  */
+  /* Dash */
 
   if (
     player.dashTimer > 0
@@ -1391,7 +1488,7 @@ function updatePlayer(
       Math.max(
         0,
         player.dashTimer -
-          dt
+        dt
       );
 
 
@@ -1410,13 +1507,13 @@ function updatePlayer(
       const distance =
         Math.abs(
           target.x -
-            player.x
+          player.x
         );
 
       const vertical =
         Math.abs(
           target.y -
-            player.y
+          player.y
         );
 
 
@@ -1425,7 +1522,7 @@ function updatePlayer(
         vertical < 100
       ) {
         const hit =
-          damage(
+          damagePlayer(
             room,
             player,
             target,
@@ -1442,9 +1539,7 @@ function updatePlayer(
   }
 
 
-  /*
-    Ground collision
-  */
+  /* Ground */
 
   if (
     player.y >=
@@ -1463,9 +1558,7 @@ function updatePlayer(
   }
 
 
-  /*
-    Arena bounds
-  */
+  /* Bounds */
 
   if (
     player.x < 45
@@ -1474,10 +1567,9 @@ function updatePlayer(
     player.vx = 0;
   }
 
-
   if (
     player.x >
-    WORLD.width - 45
+      WORLD.width - 45
   ) {
     player.x =
       WORLD.width - 45;
@@ -1487,9 +1579,9 @@ function updatePlayer(
 }
 
 
-/* =========================================================
+/* =====================================================
    PROJECTILES
-========================================================= */
+===================================================== */
 
 function updateProjectiles(
   room,
@@ -1501,21 +1593,23 @@ function updateProjectiles(
     i >= 0;
     i--
   ) {
-    const p =
+    const projectile =
       room.projectiles[i];
 
-    p.life -= dt;
+    projectile.life -= dt;
 
-    p.x +=
-      p.vx * dt;
+    projectile.x +=
+      projectile.vx *
+      dt;
 
-    p.y +=
-      p.vy * dt;
+    projectile.y +=
+      projectile.vy *
+      dt;
 
 
     const owner =
       room.players[
-        p.owner
+        projectile.owner
       ];
 
     const target =
@@ -1526,26 +1620,28 @@ function updateProjectiles(
 
 
     if (
-      !p.hit &&
+      !projectile.hit &&
       target.connected &&
       target.hp > 0
     ) {
       const distance =
         Math.hypot(
-          target.x - p.x,
+          target.x -
+            projectile.x,
+
           target.y -
             65 -
-            p.y
+            projectile.y
         );
 
 
       if (
         distance < 65
       ) {
-        p.hit =
+        projectile.hit =
           true;
 
-        damage(
+        damagePlayer(
           room,
           owner,
           target,
@@ -1557,9 +1653,9 @@ function updateProjectiles(
 
 
     if (
-      p.life <= 0 ||
-      p.x < -100 ||
-      p.x >
+      projectile.life <= 0 ||
+      projectile.x < -100 ||
+      projectile.x >
         WORLD.width + 100
     ) {
       room.projectiles.splice(
@@ -1571,30 +1667,97 @@ function updateProjectiles(
 }
 
 
-/* =========================================================
-   MAIN GAME LOOP
-========================================================= */
+/* =====================================================
+   ROUND END
+===================================================== */
 
-let lastTime =
+function finishRound(
+  room,
+  winner
+) {
+  if (
+    room.phase !==
+      "fighting"
+  ) {
+    return;
+  }
+
+  room.started =
+    false;
+
+  room.phase =
+    "round_end";
+
+  room.roundWinner =
+    winner;
+
+  room.projectiles =
+    [];
+
+
+  if (
+    winner === "P1" ||
+    winner === "P2"
+  ) {
+    room.score[winner]++;
+  }
+
+
+  const roundsNeeded =
+    Math.ceil(
+      room.roundsToWin / 2
+    );
+
+
+  if (
+    (
+      winner === "P1" ||
+      winner === "P2"
+    ) &&
+    room.score[winner] >=
+      roundsNeeded
+  ) {
+
+    room.matchWinner =
+      winner;
+
+    room.phase =
+      "match_end";
+
+    return;
+  }
+
+
+  room.nextRoundAt =
+    Date.now() +
+    2200;
+}
+
+
+/* =====================================================
+   GAME LOOP
+===================================================== */
+
+let lastTick =
   Date.now();
 
 
-function gameTick() {
+function tick() {
   const now =
     Date.now();
 
   let dt =
-    (now - lastTime) /
+    (now - lastTick) /
     1000;
 
-  lastTime =
+  lastTick =
     now;
 
   dt =
-    Math.max(
-      0,
-      Math.min(
-        0.05,
+    Math.min(
+      0.05,
+      Math.max(
+        0,
         dt
       )
     );
@@ -1605,13 +1768,11 @@ function gameTick() {
     of rooms.values()
   ) {
 
-    /*
-      CPU gets processed every tick.
-    */
+    /* CPU */
 
     if (
       room.mode ===
-        "cpu"
+      "cpu"
     ) {
       updateCPU(
         room,
@@ -1621,15 +1782,14 @@ function gameTick() {
     }
 
 
-    /*
-      Fighting.
-    */
+    /* Fighting */
 
     if (
       room.started &&
       room.phase ===
-        "fighting"
+      "fighting"
     ) {
+
       room.time -= dt;
 
 
@@ -1638,7 +1798,6 @@ function gameTick() {
         room.players.P1,
         dt
       );
-
 
       updatePlayer(
         room,
@@ -1656,6 +1815,7 @@ function gameTick() {
       if (
         room.time <= 0
       ) {
+
         room.time = 0;
 
 
@@ -1667,32 +1827,40 @@ function gameTick() {
 
 
         if (
-          p1.hp > p2.hp
+          p1.hp >
+          p2.hp
         ) {
+
           finishRound(
             room,
             "P1"
           );
+
         } else if (
-          p2.hp > p1.hp
+          p2.hp >
+          p1.hp
         ) {
+
           finishRound(
             room,
             "P2"
           );
+
         } else {
+
           finishRound(
             room,
             "draw"
           );
+
         }
+
       }
+
     }
 
 
-    /*
-      Next round.
-    */
+    /* Next round */
 
     if (
       room.phase ===
@@ -1702,23 +1870,26 @@ function gameTick() {
       Date.now() >=
         room.nextRoundAt
     ) {
+
       startNextRound(
         room
       );
+
     }
+
   }
 }
 
 
 setInterval(
-  gameTick,
+  tick,
   1000 / 60
 );
 
 
-/* =========================================================
-   BROADCAST LOOP
-========================================================= */
+/* =====================================================
+   STATE LOOP
+===================================================== */
 
 setInterval(
   () => {
@@ -1729,12 +1900,16 @@ setInterval(
     ) {
 
       if (
-        room.clients.size > 0
+        room.clients.P1 ||
+        room.clients.P2
       ) {
-        broadcastState(
+
+        sendState(
           room
         );
+
       }
+
     }
 
   },
@@ -1742,15 +1917,21 @@ setInterval(
 );
 
 
-/* =========================================================
-   WEBSOCKET
-========================================================= */
+/* =====================================================
+   CONNECTION
+===================================================== */
 
 wss.on(
   "connection",
   (ws) => {
 
+    /*
+      These are the important fields.
+      Every socket receives an exact role.
+    */
+
     ws.room = null;
+    ws.role = null;
 
 
     send(
@@ -1778,9 +1959,97 @@ wss.on(
         }
 
 
-        /* =============================================
+        /* ===========================================
+           CREATE ONLINE ROOM
+        =========================================== */
+
+        if (
+          message.type ===
+            "create"
+        ) {
+
+          if (
+            ws.room
+          ) {
+            return;
+          }
+
+
+          const rounds =
+            Number(
+              message.rounds
+            ) === 10
+              ? 10
+              : 5;
+
+
+          const room =
+            makeRoom(
+              "online",
+              rounds
+            );
+
+
+          /*
+            THIS IS THE FIX:
+            Explicitly bind this socket to P1.
+          */
+
+          ws.room =
+            room;
+
+          ws.role =
+            "P1";
+
+
+          room.clients.P1 =
+            ws;
+
+          room.players.P1.connected =
+            true;
+
+
+          rooms.set(
+            room.code,
+            room
+          );
+
+
+          send(
+            ws,
+            {
+              type:
+                "welcome",
+
+              role:
+                "P1",
+
+              code:
+                room.code,
+
+              mode:
+                "online",
+
+              rounds
+            }
+          );
+
+
+          broadcastRoom(
+            room
+          );
+
+          sendState(
+            room
+          );
+
+          return;
+        }
+
+
+        /* ===========================================
            VS COMPUTER
-        ============================================= */
+        =========================================== */
 
         if (
           message.type ===
@@ -1803,23 +2072,29 @@ wss.on(
 
 
           const room =
-            createRoom(
+            makeRoom(
               "cpu",
               rounds
             );
 
 
           /*
-            Human is P1.
-            CPU is P2.
+            Human ALWAYS = P1.
+            CPU ALWAYS = P2.
           */
+
+          ws.room =
+            room;
+
+          ws.role =
+            "P1";
+
+
+          room.clients.P1 =
+            ws;
 
           room.players.P1.connected =
             true;
-
-          room.players.P1.bot =
-            false;
-
 
           room.players.P2.connected =
             true;
@@ -1828,32 +2103,13 @@ wss.on(
             true;
 
 
-          room.clients.add(
-            ws
-          );
-
-
-          ws.room =
-            room;
-
-
-          /*
-            THIS is important:
-            start immediately.
-          */
-
-          startMatch(
+          rooms.set(
+            room.code,
             room
           );
 
 
-          /*
-            Keep the CPU room in
-            the room map.
-          */
-
-          rooms.set(
-            room.code,
+          startMatch(
             room
           );
 
@@ -1878,101 +2134,21 @@ wss.on(
           );
 
 
-          broadcastState(
+          broadcastRoom(
             room
           );
 
+          sendState(
+            room
+          );
 
           return;
         }
 
 
-        /* =============================================
-           CREATE ONLINE ROOM
-        ============================================= */
-
-        if (
-          message.type ===
-            "create"
-        ) {
-
-          if (
-            ws.room
-          ) {
-            return;
-          }
-
-
-          const rounds =
-            Number(
-              message.rounds
-            ) === 10
-              ? 10
-              : 5;
-
-
-          const room =
-            createRoom(
-              "online",
-              rounds
-            );
-
-
-          room.players.P1.connected =
-            true;
-
-
-          room.code =
-            randomRoomCode();
-
-
-          rooms.set(
-            room.code,
-            room
-          );
-
-
-          room.clients.add(
-            ws
-          );
-
-
-          ws.room =
-            room;
-
-
-          send(
-            ws,
-            {
-              type:
-                "welcome",
-
-              role:
-                "P1",
-
-              code:
-                room.code,
-
-              mode:
-                "online",
-
-              rounds
-            }
-          );
-
-
-          broadcastState(
-            room
-          );
-
-
-          return;
-        }
-
-
-        /* =============================================
+        /* ===========================================
            JOIN ONLINE ROOM
-        ============================================= */
+        =========================================== */
 
         if (
           message.type ===
@@ -1989,7 +2165,7 @@ wss.on(
           const code =
             String(
               message.code ||
-                ""
+              ""
             )
               .trim()
               .toUpperCase();
@@ -2004,6 +2180,7 @@ wss.on(
           if (
             !room
           ) {
+
             send(
               ws,
               {
@@ -2023,6 +2200,7 @@ wss.on(
             room.mode !==
               "online"
           ) {
+
             send(
               ws,
               {
@@ -2039,8 +2217,9 @@ wss.on(
 
 
           if (
-            room.players.P2.connected
+            room.clients.P2
           ) {
+
             send(
               ws,
               {
@@ -2056,17 +2235,28 @@ wss.on(
           }
 
 
+          /*
+            THIS IS THE SECOND IMPORTANT FIX:
+            Explicitly bind the joining socket to P2.
+          */
+
+          ws.room =
+            room;
+
+          ws.role =
+            "P2";
+
+
+          room.clients.P2 =
+            ws;
+
           room.players.P2.connected =
             true;
 
 
-          room.clients.add(
-            ws
+          startMatch(
+            room
           );
-
-
-          ws.room =
-            room;
 
 
           send(
@@ -2090,23 +2280,21 @@ wss.on(
           );
 
 
-          startMatch(
+          broadcastRoom(
             room
           );
 
-
-          broadcastState(
+          sendState(
             room
           );
-
 
           return;
         }
 
 
-        /* =============================================
+        /* ===========================================
            INPUT
-        ============================================= */
+        =========================================== */
 
         if (
           message.type ===
@@ -2114,25 +2302,23 @@ wss.on(
         ) {
 
           if (
-            !ws.room
+            !ws.room ||
+            !ws.role
           ) {
             return;
           }
 
 
           /*
-            CPU is never controlled
-            by the browser.
+            Socket role is trusted.
+
+            P1 socket can only control P1.
+            P2 socket can only control P2.
           */
-
-          const role =
-            ws.role ||
-            "P1";
-
 
           const player =
             ws.room.players[
-              role
+              ws.role
             ];
 
 
@@ -2144,19 +2330,18 @@ wss.on(
           }
 
 
-          setInput(
+          setPlayerInput(
             player,
             message.input
           );
-
 
           return;
         }
 
 
-        /* =============================================
+        /* ===========================================
            ACTION
-        ============================================= */
+        =========================================== */
 
         if (
           message.type ===
@@ -2164,20 +2349,16 @@ wss.on(
         ) {
 
           if (
-            !ws.room
+            !ws.room ||
+            !ws.role
           ) {
             return;
           }
 
 
-          const role =
-            ws.role ||
-            "P1";
-
-
           const player =
             ws.room.players[
-              role
+              ws.role
             ];
 
 
@@ -2203,14 +2384,13 @@ wss.on(
             message.action
           );
 
-
           return;
         }
 
 
-        /* =============================================
+        /* ===========================================
            REMATCH
-        ============================================= */
+        =========================================== */
 
         if (
           message.type ===
@@ -2218,21 +2398,80 @@ wss.on(
         ) {
 
           if (
-            !ws.room
+            !ws.room ||
+            !ws.role
           ) {
             return;
           }
 
 
-          startMatch(
-            ws.room
+          const room =
+            ws.room;
+
+
+          /*
+            CPU can restart immediately.
+          */
+
+          if (
+            room.mode ===
+              "cpu"
+          ) {
+
+            startMatch(
+              room
+            );
+
+            sendState(
+              room
+            );
+
+            return;
+          }
+
+
+          /*
+            For online play, both players
+            can simply press rematch.
+          */
+
+          if (
+            !room.rematch
+          ) {
+            room.rematch =
+              new Set();
+          }
+
+
+          room.rematch.add(
+            ws.role
           );
 
 
-          broadcastState(
-            ws.room
-          );
+          if (
+            room.rematch.has(
+              "P1"
+            ) &&
+            room.rematch.has(
+              "P2"
+            )
+          ) {
 
+            room.rematch.clear();
+
+            startMatch(
+              room
+            );
+
+            broadcastRoom(
+              room
+            );
+
+            sendState(
+              room
+            );
+
+          }
 
           return;
         }
@@ -2241,9 +2480,9 @@ wss.on(
     );
 
 
-    /* ===============================================
+    /* ===========================================
        DISCONNECT
-    =============================================== */
+    =========================================== */
 
     ws.on(
       "close",
@@ -2252,17 +2491,40 @@ wss.on(
         const room =
           ws.room;
 
+        const role =
+          ws.role;
+
 
         if (
-          !room
+          !room ||
+          !role
         ) {
           return;
         }
 
 
-        room.clients.delete(
-          ws
-        );
+        /*
+          Only remove the exact socket
+          that owns that role.
+        */
+
+        if (
+          room.clients[
+            role
+          ] === ws
+        ) {
+
+          room.clients[
+            role
+          ] = null;
+
+        }
+
+
+        room.players[
+          role
+        ].connected =
+          false;
 
 
         if (
@@ -2275,20 +2537,12 @@ wss.on(
           );
 
           return;
+
         }
 
 
-        room.players.P1.connected =
-          room.clientsHasP1;
-
-        room.players.P2.connected =
-          room.clientsHasP2;
-
-
         /*
-          Simpler handling:
-          stop the match if either
-          online player leaves.
+          Online match stops when a player leaves.
         */
 
         room.started =
@@ -2300,13 +2554,36 @@ wss.on(
         room.projectiles =
           [];
 
+        room.roundWinner =
+          null;
+
+        room.matchWinner =
+          null;
+
+
+        broadcastRoom(
+          room
+        );
+
+        sendState(
+          room
+        );
+
+
+        /*
+          If nobody is left,
+          delete room.
+        */
+
         if (
-          room.clients.size ===
-            0
+          !room.clients.P1 &&
+          !room.clients.P2
         ) {
+
           rooms.delete(
             room.code
           );
+
         }
 
       }
@@ -2316,89 +2593,9 @@ wss.on(
 );
 
 
-/* =========================================================
-   FIX ONLINE CLIENT ROLE TRACKING
-========================================================= */
-
-wss.on(
-  "connection",
-  (ws) => {
-
-    /*
-      This second listener is intentionally harmless.
-      Role gets assigned in the message handler below.
-    */
-
-  }
-);
-
-
-/*
-  Re-create role tracking using a small wrapper around
-  the original message handling behavior.
-*/
-
-const originalConnectionHandler = null;
-
-
-/* =========================================================
-   BETTER ONLINE ROLE TRACKING
-========================================================= */
-
-/*
-  ws.role is assigned below by inspecting which player
-  owns the connected socket through the room client map.
-*/
-
-setInterval(
-  () => {
-
-    for (
-      const room
-      of rooms.values()
-    ) {
-
-      if (
-        room.mode !==
-          "online"
-      ) {
-        continue;
-      }
-
-      /*
-        First client in an online room = P1
-        Second client = P2
-      */
-
-      const clients =
-        Array.from(
-          room.clients
-        );
-
-      if (
-        clients[0]
-      ) {
-        clients[0].role =
-          "P1";
-      }
-
-      if (
-        clients[1]
-      ) {
-        clients[1].role =
-          "P2";
-      }
-
-    }
-
-  },
-  100
-);
-
-
-/* =========================================================
+/* =====================================================
    START SERVER
-========================================================= */
+===================================================== */
 
 server.listen(
   PORT,
@@ -2406,11 +2603,23 @@ server.listen(
   () => {
 
     console.log(
-      `Stickman Fight running on port ${PORT}`
+      "================================="
     );
 
     console.log(
-      `http://localhost:${PORT}`
+      "   STICKMAN FIGHT SERVER"
+    );
+
+    console.log(
+      "================================="
+    );
+
+    console.log(
+      `Port: ${PORT}`
+    );
+
+    console.log(
+      `Open: http://localhost:${PORT}`
     );
 
   }
