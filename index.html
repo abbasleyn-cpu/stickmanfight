@@ -1,453 +1,151 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
+<div class="controls-panel">
 
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
-  />
+  <div class="controls-heading">
+    CONTROLS
+  </div>
 
-  <title>Stickman Fight</title>
+  <div class="controls-columns">
 
-  <link rel="stylesheet" href="style.css" />
-</head>
+    <!-- PLAYER 1 -->
 
-<body>
+    <div class="controls-card">
 
-<div id="app">
+      <div class="controls-player p1-control">
+        PLAYER 1
+      </div>
 
-  <header class="topbar">
-    <div class="logo">
-      STICKMAN <span>FIGHT</span>
+      <div class="control-line">
+        <span class="key">A</span>
+        <span>Move Left</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">D</span>
+        <span>Move Right</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">W</span>
+        <span>Jump</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">F</span>
+        <span>Punch</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">R</span>
+        <span>Kick</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">G</span>
+        <span>Block</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key ability-key">1</span>
+        <span>🔥 Fire Fist</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key ability-key">2</span>
+        <span>⚡ Lightning Dash</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key ability-key">3</span>
+        <span>🌪 Wind Slash</span>
+      </div>
+
     </div>
 
-    <div id="connection" class="connection">
-      ● CONNECTING...
+
+    <!-- PLAYER 2 -->
+
+    <div class="controls-card">
+
+      <div class="controls-player p2-control">
+        PLAYER 2
+      </div>
+
+      <div class="control-line">
+        <span class="key">←</span>
+        <span>Move Left</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">→</span>
+        <span>Move Right</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">↑</span>
+        <span>Jump</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">L</span>
+        <span>Punch</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">O</span>
+        <span>Kick</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key">K</span>
+        <span>Block</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key ability-key">8</span>
+        <span>🔥 Fire Fist</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key ability-key">9</span>
+        <span>⚡ Lightning Dash</span>
+      </div>
+
+      <div class="control-line">
+        <span class="key ability-key">0</span>
+        <span>🌪 Wind Slash</span>
+      </div>
+
     </div>
-  </header>
 
+  </div>
 
-  <main>
 
-    <!-- ================= LOBBY ================= -->
+  <!-- MOBILE -->
 
-    <section id="lobby" class="panel">
+  <div class="mobile-controls-info">
 
-      <div class="hero">
+    <div class="controls-player">
+      MOBILE / TOUCH
+    </div>
 
-        <div class="badge">
-          ONLINE 1V1 FIGHTER
-        </div>
+    <p>
+      Touch controls appear automatically when
+      playing on a phone or tablet.
+    </p>
 
-        <h1>
-          STICKMAN<br>
-          <span>FIGHT</span>
-        </h1>
+    <div class="mobile-preview">
 
-        <p>
-          Fight a friend online or challenge the computer.
-        </p>
+      <span>◀ ▶</span>
+      <span>▲ JUMP</span>
+      <span>PUNCH</span>
+      <span>KICK</span>
+      <span>BLOCK</span>
+      <span>🔥 FIRE</span>
+      <span>⚡ DASH</span>
+      <span>🌪 WIND</span>
 
-      </div>
+    </div>
 
-
-      <!-- ROUND SELECT -->
-
-      <div class="option-group">
-
-        <div class="option-title">
-          ROUNDS
-        </div>
-
-        <div class="option-buttons">
-
-          <button
-            id="round5Btn"
-            class="option-btn selected"
-            data-rounds="5"
-          >
-            5 ROUNDS
-          </button>
-
-          <button
-            id="round10Btn"
-            class="option-btn"
-            data-rounds="10"
-          >
-            10 ROUNDS
-          </button>
-
-        </div>
-
-      </div>
-
-
-      <!-- GAME MODE -->
-
-      <div class="option-group">
-
-        <div class="option-title">
-          GAME MODE
-        </div>
-
-        <div class="lobby-buttons">
-
-          <button
-            id="createBtn"
-            class="primary-btn"
-          >
-            CREATE ONLINE ROOM
-          </button>
-
-          <button
-            id="cpuBtn"
-            class="secondary-btn"
-          >
-            VS COMPUTER
-          </button>
-
-          <button
-            id="showJoinBtn"
-            class="secondary-btn"
-          >
-            JOIN ROOM
-          </button>
-
-        </div>
-
-      </div>
-
-
-      <!-- JOIN -->
-
-      <div
-        id="joinBox"
-        class="join-box"
-        hidden
-      >
-
-        <input
-          id="roomInput"
-          type="text"
-          maxlength="6"
-          placeholder="ROOM CODE"
-          autocomplete="off"
-          spellcheck="false"
-        />
-
-        <button
-          id="joinBtn"
-          class="primary-btn"
-        >
-          JOIN
-        </button>
-
-      </div>
-
-
-      <!-- ROOM -->
-
-      <div
-        id="roomInfo"
-        class="room-info"
-        hidden
-      >
-
-        <div class="room-title">
-          ROOM
-        </div>
-
-        <div class="room-code-row">
-
-          <div
-            id="roomCode"
-            class="room-code"
-          >
-            ------
-          </div>
-
-          <button id="copyBtn">
-            COPY
-          </button>
-
-        </div>
-
-      </div>
-
-
-      <div
-        id="status"
-        class="status"
-      >
-        Connecting to server...
-      </div>
-
-
-      <div class="controls-help">
-
-        <h3>PLAYER 1</h3>
-
-        <p>
-          A / D move · W jump · F punch · R kick · G block
-        </p>
-
-        <p>
-          1 Fire Fist · 2 Lightning Dash · 3 Wind Slash
-        </p>
-
-
-        <h3 class="p2-help-title">
-          PLAYER 2
-        </h3>
-
-        <p>
-          ← / → move · ↑ jump · L punch · O kick · K block
-        </p>
-
-        <p>
-          8 Fire Fist · 9 Lightning Dash · 0 Wind Slash
-        </p>
-
-      </div>
-
-    </section>
-
-
-    <!-- ================= GAME ================= -->
-
-    <section id="game" hidden>
-
-      <div class="scoreboard">
-
-        <div class="score-player p1-score">
-
-          <div class="score-name">
-            PLAYER 1
-          </div>
-
-          <div class="round-score" id="p1Score">
-            0
-          </div>
-
-        </div>
-
-
-        <div class="round-center">
-
-          <div id="roundLabel">
-            ROUND 1 / 5
-          </div>
-
-          <div id="timer">
-            60
-          </div>
-
-          <div
-            id="gameStatus"
-            class="game-status"
-          >
-            FIGHT!
-          </div>
-
-        </div>
-
-
-        <div class="score-player p2-score">
-
-          <div class="score-name">
-            PLAYER 2
-          </div>
-
-          <div class="round-score" id="p2Score">
-            0
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div class="hp-header">
-
-        <div class="hp-side">
-
-          <div class="hp-label">
-            PLAYER 1
-          </div>
-
-          <div class="hp-bar">
-            <div
-              id="p1Hp"
-              class="hp-fill p1-fill"
-              style="width:100%"
-            ></div>
-          </div>
-
-          <div id="p1HpText">
-            100 HP
-          </div>
-
-        </div>
-
-
-        <div class="hp-side p2-hp-side">
-
-          <div class="hp-label">
-            PLAYER 2
-          </div>
-
-          <div class="hp-bar">
-            <div
-              id="p2Hp"
-              class="hp-fill p2-fill"
-              style="width:100%"
-            ></div>
-          </div>
-
-          <div id="p2HpText">
-            100 HP
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <!-- ARENA -->
-
-      <div class="arena-wrap">
-
-        <canvas id="gameCanvas"></canvas>
-
-
-        <div
-          id="winOverlay"
-          class="win-overlay"
-          hidden
-        >
-
-          <div class="win-box">
-
-            <div
-              id="winnerText"
-              class="winner-text"
-            >
-              YOU WIN!
-            </div>
-
-            <div
-              id="roundResult"
-              class="round-result"
-            >
-              ROUND WON
-            </div>
-
-            <button
-              id="rematchBtn"
-              class="primary-btn"
-            >
-              PLAY AGAIN
-            </button>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <!-- MOBILE -->
-
-      <div id="mobileControls">
-
-        <div class="mobile-row movement-row">
-
-          <button
-            class="control-btn"
-            data-input="left"
-          >
-            ◀
-          </button>
-
-          <button
-            class="control-btn"
-            data-input="right"
-          >
-            ▶
-          </button>
-
-          <button
-            class="control-btn jump"
-            data-input="jump"
-          >
-            ▲
-          </button>
-
-        </div>
-
-
-        <div class="mobile-row action-row">
-
-          <button
-            class="control-btn"
-            data-action="attack"
-          >
-            PUNCH
-          </button>
-
-          <button
-            class="control-btn"
-            data-action="kick"
-          >
-            KICK
-          </button>
-
-          <button
-            class="control-btn"
-            data-input="block"
-          >
-            BLOCK
-          </button>
-
-        </div>
-
-
-        <div class="mobile-row ability-row">
-
-          <button
-            class="control-btn ability"
-            data-action="fire"
-          >
-            🔥 FIRE
-          </button>
-
-          <button
-            class="control-btn ability"
-            data-action="dash"
-          >
-            ⚡ DASH
-          </button>
-
-          <button
-            class="control-btn ability"
-            data-action="wind"
-          >
-            🌪 WIND
-          </button>
-
-        </div>
-
-      </div>
-
-    </section>
-
-  </main>
+  </div>
 
 </div>
-
-
-<script type="module" src="game.js"></script>
-
-</body>
-</html>
