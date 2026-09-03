@@ -2,113 +2,144 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { WebSocketServer } from "ws";
+
+import { WebSocketServer, WebSocket } from "ws";
+
+
+/* =====================================================
+   BASIC SERVER
+===================================================== */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+
+const PUBLIC_FILES = {
+  "/": "index.html",
+  "/index.html": "index.html",
+  "/style.css": "style.css",
+  "/game.js": "game.js"
+};
+
+const MIME_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8"
+};
+
+const httpServer = http.createServer((req, res) => {
+  const requestUrl = new URL(
+    req.url,
+    `http://${req.headers.host || "localhost"}`
+  );
+
+  const relativeFile =
+    PUBLIC_FILES[requestUrl.pathname];
+
+  if (!relativeFile) {
+    res.writeHead(404);
+    res.end("Not found");
+    return;
+  }
+
+  const filePath = path.resolve(
+    __dirname,
+    relativeFile
+  );
+
+  const allowedRoot =
+    path.resolve(__dirname);
+
+  if (
+    !filePath.startsWith(allowedRoot)
+  ) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
+
+  fs.readFile(filePath, (error, data) => {
+    if (error) {
+      res.writeHead(500);
+      res.end("Server error");
+      return;
+    }
+
+    const ext =
+      path.extname(filePath).toLowerCase();
+
+    res.writeHead(200, {
+      "Content-Type":
+        MIME_TYPES[ext] ||
+        "application/octet-stream"
+    });
+
+    res.end(data);
+  });
+});
+
+
+/* =====================================================
+   WEBSOCKET
+===================================================== */
+
+const wss = new WebSocketServer({
+  server: httpServer
+});
+
+
+/* =====================================================
+   GAME CONSTANTS
+===================================================== */
 
 const WORLD = {
   width: 1200,
   height: 600,
-  ground: 500
+  ground: 510
 };
 
-const MAX_PLAYERS = 2;
-const ROUND_TIME = 90;
+const PHYSICS = {
+  moveSpeed: 280,
+  blockSpeed: 150,
+  jumpVelocity: -700,
+  gravity: 1800
+};
+
+const MATCH_TIME = 60;
+
+
+/* =====================================================
+   ROOMS
+===================================================== */
 
 const rooms = new Map();
 
-let nextEffectId = 1;
+const ROOM_CHARS =
+  "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8"
-};
-
-const server = http.createServer((req, res) => {
-  try {
-    const url = new URL(req.url, "http://localhost");
-    let pathname = decodeURIComponent(url.pathname);
-
-    if (pathname === "/") {
-      pathname = "/index.html";
-    }
-
-    const filePath = path.resolve(
-      __dirname,
-      "." + pathname
-    );
-
-    if (
-      filePath !== __dirname &&
-      !filePath.startsWith(__dirname + path.sep)
-    ) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return;
-    }
-
-    fs.readFile(filePath, (error, data) => {
-      if (error) {
-        res.writeHead(404);
-        res.end("Not found");
-        return;
-      }
-
-      res.writeHead(200, {
-        "Content-Type":
-          MIME[path.extname(filePath)] ||
-          "application/octet-stream"
-      });
-
-      res.end(data);
-    });
-  } catch {
-    res.writeHead(400);
-    res.end("Bad request");
-  }
-});
-
-const wss = new WebSocketServer({
-  server
-});
-
-function send(ws, message) {
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify(message));
-  }
-}
-
-function broadcast(room, message) {
-  for (const player of room.players.values()) {
-    send(player.ws, message);
-  }
-}
-
-function createCode() {
-  const characters =
-    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
+function randomRoomCode() {
   let code;
 
   do {
     code = "";
 
     for (let i = 0; i < 6; i++) {
-      code += characters[
-        Math.floor(Math.random() * characters.length)
-      ];
+      code +=
+        ROOM_CHARS[
+          Math.floor(
+            Math.random() *
+            ROOM_CHARS.length
+          )
+        ];
     }
   } while (rooms.has(code));
 
   return code;
 }
 
-function emptyInput() {
+
+function defaultInput() {
   return {
     left: false,
     right: false,
@@ -117,651 +148,113 @@ function emptyInput() {
   };
 }
 
-function createPlayer(id) {
-  const isOne = id === 1;
 
+function createPlayer(role, connected = false) {
   return {
-    id,
+    role,
 
-    ws: null,
+    connected,
 
-    connected: false,
+    x:
+      role === "P1"
+        ? 300
+        : 900,
 
-    x: isOne ? 250 : 950,
     y: WORLD.ground,
 
     vx: 0,
     vy: 0,
 
-    facing: isOne ? 1 : -1,
+    facing:
+      role === "P1"
+        ? 1
+        : -1,
 
     hp: 100,
 
-    maxHp: 100,
+    input: defaultInput(),
 
-    input: emptyInput(),
+    jumpQueued: false,
 
-    wasJumping: false,
+    onGround: true,
 
-    grounded: true,
-
-    state: "idle",
+    blocking: false,
 
     attackTimer: 0,
-    attackCooldown: 0,
-
-    hitStun: 0,
 
     dashTimer: 0,
+
     dashHit: false,
 
-    invulnerable: 0,
+    stun: 0,
 
-    abilityCooldowns: {
+    invuln: 0,
+
+    cooldowns: {
       fire: 0,
       dash: 0,
-      wind: 0
+      wind: 0,
+      punch: 0,
+      kick: 0
     }
   };
 }
 
-function createRoom() {
-  const code = createCode();
 
-  const room = {
+function createRoom(code) {
+  return {
     code,
 
-    players: new Map([
-      [1, createPlayer(1)],
-      [2, createPlayer(2)]
-    ]),
+    clients: new Map(),
+
+    players: {
+      P1: createPlayer("P1"),
+      P2: createPlayer("P2")
+    },
 
     started: false,
-    finished: false,
 
-    time: ROUND_TIME,
+    time: MATCH_TIME,
+
+    winner: null,
 
     projectiles: [],
 
-    effects: [],
+    events: [],
 
-    rematch: new Set(),
-
-    lastTick: Date.now()
-  };
-
-  rooms.set(code, room);
-
-  return room;
-}
-
-function resetPlayer(player) {
-  const isOne = player.id === 1;
-
-  player.x = isOne ? 250 : 950;
-  player.y = WORLD.ground;
-
-  player.vx = 0;
-  player.vy = 0;
-
-  player.facing = isOne ? 1 : -1;
-
-  player.hp = 100;
-
-  player.input = emptyInput();
-
-  player.wasJumping = false;
-  player.grounded = true;
-
-  player.state = "idle";
-
-  player.attackTimer = 0;
-  player.attackCooldown = 0;
-
-  player.hitStun = 0;
-
-  player.dashTimer = 0;
-  player.dashHit = false;
-
-  player.invulnerable = 0;
-
-  player.abilityCooldowns = {
-    fire: 0,
-    dash: 0,
-    wind: 0
+    rematch: new Set()
   };
 }
 
-function startRound(room) {
-  for (const player of room.players.values()) {
-    resetPlayer(player);
-  }
 
-  room.projectiles = [];
-  room.effects = [];
+/* =====================================================
+   SEND
+===================================================== */
 
-  room.time = ROUND_TIME;
-
-  room.started = true;
-  room.finished = false;
-
-  room.rematch.clear();
-
-  broadcastRoom(room);
-}
-
-function broadcastRoom(room) {
-  broadcast(room, {
-    type: "roomState",
-    code: room.code,
-    players: [...room.players.values()]
-      .filter(p => p.connected)
-      .map(p => p.id),
-    started: room.started,
-    finished: room.finished,
-    time: room.time
-  });
-}
-
-function getOpponent(room, player) {
-  for (const other of room.players.values()) {
-    if (
-      other.id !== player.id &&
-      other.connected
-    ) {
-      return other;
-    }
-  }
-
-  return null;
-}
-
-function addEffect(room, effect) {
-  room.effects.push({
-    id: nextEffectId++,
-    ...effect
-  });
-}
-
-function canAct(player) {
-  return (
-    player.connected &&
-    player.hp > 0 &&
-    player.hitStun <= 0
-  );
-}
-
-function dealDamage(
-  room,
-  attacker,
-  target,
-  damage,
-  knockback,
-  stun
-) {
-  if (!target.connected) return;
-
-  if (target.invulnerable > 0) {
-    return;
-  }
-
-  let finalDamage = damage;
-
-  if (target.input.block) {
-    finalDamage = Math.max(
-      1,
-      Math.floor(damage * 0.25)
-    );
-  }
-
-  target.hp = Math.max(
-    0,
-    target.hp - finalDamage
-  );
-
-  target.hitStun = stun;
-
-  target.vx +=
-    attacker.facing *
-    knockback;
-
-  addEffect(room, {
-    type: "hit",
-    x: target.x,
-    y: target.y - 80,
-    damage: finalDamage
-  });
-
-  if (target.hp <= 0) {
-    finishRound(room, attacker.id);
-  }
-}
-
-function meleeAttack(
-  room,
-  player,
-  damage,
-  range,
-  knockback,
-  stun,
-  type
-) {
-  if (!canAct(player)) return;
-
-  if (player.attackCooldown > 0) {
-    return;
-  }
-
-  const opponent = getOpponent(room, player);
-
-  if (!opponent) return;
-
-  player.attackCooldown = 0.38;
-  player.attackTimer = 0.2;
-  player.state = type;
-
-  const dx = opponent.x - player.x;
-
-  const facingTarget =
-    Math.sign(dx) === player.facing;
-
+function send(ws, data) {
   if (
-    Math.abs(dx) <= range &&
-    Math.abs(opponent.y - player.y) < 110 &&
-    facingTarget
+    ws &&
+    ws.readyState === WebSocket.OPEN
   ) {
-    dealDamage(
-      room,
-      player,
-      opponent,
-      damage,
-      knockback,
-      stun
-    );
-  }
-
-  addEffect(room, {
-    type,
-    x: player.x + player.facing * 60,
-    y: player.y - 80
-  });
-}
-
-function fireFist(room, player) {
-  if (!canAct(player)) return;
-
-  if (player.abilityCooldowns.fire > 0) {
-    return;
-  }
-
-  player.abilityCooldowns.fire = 4;
-
-  player.state = "fire";
-
-  const opponent = getOpponent(room, player);
-
-  addEffect(room, {
-    type: "fire",
-    x: player.x + player.facing * 75,
-    y: player.y - 80
-  });
-
-  if (!opponent) return;
-
-  const dx = opponent.x - player.x;
-
-  if (
-    Math.abs(dx) <= 210 &&
-    Math.sign(dx) === player.facing &&
-    Math.abs(opponent.y - player.y) < 120
-  ) {
-    dealDamage(
-      room,
-      player,
-      opponent,
-      28,
-      330,
-      0.25
-    );
+    ws.send(JSON.stringify(data));
   }
 }
 
-function lightningDash(room, player) {
-  if (!canAct(player)) return;
 
-  if (player.abilityCooldowns.dash > 0) {
-    return;
-  }
-
-  player.abilityCooldowns.dash = 6;
-
-  player.dashTimer = 0.18;
-  player.dashHit = false;
-  player.invulnerable = 0.22;
-
-  player.state = "dash";
-
-  addEffect(room, {
-    type: "dash",
-    x: player.x,
-    y: player.y - 50
-  });
-}
-
-function windSlash(room, player) {
-  if (!canAct(player)) return;
-
-  if (player.abilityCooldowns.wind > 0) {
-    return;
-  }
-
-  player.abilityCooldowns.wind = 5;
-
-  player.state = "wind";
-
-  room.projectiles.push({
-    owner: player.id,
-
-    x: player.x + player.facing * 60,
-    y: player.y - 70,
-
-    vx: player.facing * 650,
-
-    life: 1.2,
-
-    damage: 18,
-
-    hit: false
-  });
-
-  addEffect(room, {
-    type: "wind",
-    x: player.x + player.facing * 60,
-    y: player.y - 70
-  });
-}
-
-function handleAction(room, player, action) {
-  if (!room.started || room.finished) {
-    return;
-  }
-
-  if (action === "attack") {
-    meleeAttack(
-      room,
-      player,
-      12,
-      145,
-      180,
-      0.14,
-      "attack"
-    );
-  }
-
-  if (action === "kick") {
-    meleeAttack(
-      room,
-      player,
-      16,
-      155,
-      240,
-      0.2,
-      "kick"
-    );
-  }
-
-  if (action === "fire") {
-    fireFist(room, player);
-  }
-
-  if (action === "dash") {
-    lightningDash(room, player);
-  }
-
-  if (action === "wind") {
-    windSlash(room, player);
+function broadcast(room, data) {
+  for (const ws of room.clients.values()) {
+    send(ws, data);
   }
 }
 
-function updatePlayer(room, player, dt) {
-  if (!player.connected) return;
 
-  player.attackCooldown =
-    Math.max(
-      0,
-      player.attackCooldown - dt
-    );
+/* =====================================================
+   PUBLIC STATE
+===================================================== */
 
-  player.attackTimer =
-    Math.max(
-      0,
-      player.attackTimer - dt
-    );
-
-  player.hitStun =
-    Math.max(
-      0,
-      player.hitStun - dt
-    );
-
-  player.invulnerable =
-    Math.max(
-      0,
-      player.invulnerable - dt
-    );
-
-  for (const key of Object.keys(
-    player.abilityCooldowns
-  )) {
-    player.abilityCooldowns[key] =
-      Math.max(
-        0,
-        player.abilityCooldowns[key] - dt
-      );
-  }
-
-  if (player.hp <= 0) {
-    return;
-  }
-
-  if (player.hitStun > 0) {
-    player.vx *= 0.9;
-  } else if (player.dashTimer > 0) {
-    player.dashTimer =
-      Math.max(
-        0,
-        player.dashTimer - dt
-      );
-
-    player.vx =
-      player.facing * 850;
-
-    player.x += player.vx * dt;
-
-    if (!player.dashHit) {
-      const opponent =
-        getOpponent(room, player);
-
-      if (
-        opponent &&
-        Math.abs(opponent.x - player.x) < 90 &&
-        Math.abs(opponent.y - player.y) < 120
-      ) {
-        player.dashHit = true;
-
-        dealDamage(
-          room,
-          player,
-          opponent,
-          20,
-          450,
-          0.3
-        );
-      }
-    }
-  } else {
-    const direction =
-      (player.input.right ? 1 : 0) -
-      (player.input.left ? 1 : 0);
-
-    const speed =
-      player.input.block
-        ? 145
-        : 300;
-
-    if (direction !== 0) {
-      player.vx =
-        direction * speed;
-
-      player.facing = direction;
-    } else {
-      player.vx *= 0.78;
-    }
-
-    player.x += player.vx * dt;
-
-    if (
-      player.input.jump &&
-      !player.wasJumping &&
-      player.grounded &&
-      !player.input.block
-    ) {
-      player.vy = -700;
-      player.grounded = false;
-    }
-
-    player.wasJumping =
-      player.input.jump;
-  }
-
-  player.vy += 1900 * dt;
-
-  player.y +=
-    player.vy * dt;
-
-  if (player.y >= WORLD.ground) {
-    player.y = WORLD.ground;
-    player.vy = 0;
-    player.grounded = true;
-  }
-
-  player.x = Math.max(
-    70,
-    Math.min(
-      WORLD.width - 70,
-      player.x
-    )
-  );
-
-  if (player.attackTimer <= 0) {
-    if (player.dashTimer <= 0) {
-      if (player.input.block) {
-        player.state = "block";
-      } else {
-        player.state = "idle";
-      }
-    }
-  }
-}
-
-function updateProjectiles(room, dt) {
-  const remaining = [];
-
-  for (const projectile of room.projectiles) {
-    projectile.x +=
-      projectile.vx * dt;
-
-    projectile.life -= dt;
-
-    if (
-      projectile.life <= 0 ||
-      projectile.x < -100 ||
-      projectile.x > WORLD.width + 100
-    ) {
-      continue;
-    }
-
-    const target =
-      [...room.players.values()].find(
-        p =>
-          p.connected &&
-          p.id !== projectile.owner
-      );
-
-    if (
-      target &&
-      !projectile.hit &&
-      Math.abs(target.x - projectile.x) < 55 &&
-      Math.abs(
-        target.y - projectile.y
-      ) < 90
-    ) {
-      projectile.hit = true;
-
-      const attacker =
-        room.players.get(
-          projectile.owner
-        );
-
-      if (attacker) {
-        dealDamage(
-          room,
-          attacker,
-          target,
-          projectile.damage,
-          300,
-          0.2
-        );
-      }
-
-      addEffect(room, {
-        type: "windHit",
-        x: projectile.x,
-        y: projectile.y
-      });
-
-      continue;
-    }
-
-    remaining.push(projectile);
-  }
-
-  room.projectiles = remaining;
-}
-
-function updatePlayersCollision(room) {
-  const p1 = room.players.get(1);
-  const p2 = room.players.get(2);
-
-  if (
-    !p1?.connected ||
-    !p2?.connected
-  ) {
-    return;
-  }
-
-  const distance =
-    p2.x - p1.x;
-
-  const minimum = 65;
-
-  if (Math.abs(distance) < minimum) {
-    const push =
-      (minimum - Math.abs(distance)) / 2;
-
-    if (distance >= 0) {
-      p1.x -= push;
-      p2.x += push;
-    } else {
-      p1.x += push;
-      p2.x -= push;
-    }
-  }
-}
-
-function serializePlayer(player) {
+function publicPlayer(player) {
   return {
-    id: player.id,
+    role: player.role,
 
     connected: player.connected,
 
@@ -774,216 +267,1084 @@ function serializePlayer(player) {
     facing: player.facing,
 
     hp: player.hp,
-    maxHp: player.maxHp,
 
-    grounded: player.grounded,
+    blocking:
+      player.blocking,
 
-    state: player.state,
+    onGround:
+      player.onGround,
 
-    block: player.input.block,
+    attackTimer:
+      player.attackTimer,
 
-    attackTimer: player.attackTimer,
+    dashTimer:
+      player.dashTimer,
 
-    hitStun: player.hitStun,
-
-    dashTimer: player.dashTimer,
-
-    invulnerable:
-      player.invulnerable,
+    stun:
+      player.stun,
 
     cooldowns: {
-      ...player.abilityCooldowns
+      fire: player.cooldowns.fire,
+      dash: player.cooldowns.dash,
+      wind: player.cooldowns.wind
     }
   };
 }
 
-function serializeRoom(room) {
+
+function publicState(room) {
   return {
     type: "state",
 
-    time: room.time,
-
     started: room.started,
 
-    finished: room.finished,
+    time: Math.max(
+      0,
+      room.time
+    ),
 
-    players: [
-      serializePlayer(
-        room.players.get(1)
+    winner: room.winner,
+
+    players: {
+      P1: publicPlayer(
+        room.players.P1
       ),
-      serializePlayer(
-        room.players.get(2)
+
+      P2: publicPlayer(
+        room.players.P2
       )
-    ],
+    },
 
     projectiles:
-      room.projectiles.map(p => ({
+      room.projectiles.map((p) => ({
+        id: p.id,
+        kind: p.kind,
         x: p.x,
         y: p.y,
         vx: p.vx,
-        owner: p.owner,
-        life: p.life
+        vy: p.vy
       })),
 
-    effects: room.effects
+    events: room.events
   };
 }
 
-function finishRound(room, winner) {
-  if (room.finished) return;
 
-  room.finished = true;
-  room.started = false;
+function broadcastState(room) {
+  broadcast(
+    room,
+    publicState(room)
+  );
 
-  broadcast(room, {
-    type: "roundOver",
-    winner
-  });
-
-  broadcastRoom(room);
+  room.events = [];
 }
 
-function updateRoom(room, dt) {
-  if (!room.started || room.finished) {
+
+/* =====================================================
+   MATCH RESET
+===================================================== */
+
+function resetPlayer(player) {
+  player.x =
+    player.role === "P1"
+      ? 300
+      : 900;
+
+  player.y = WORLD.ground;
+
+  player.vx = 0;
+  player.vy = 0;
+
+  player.facing =
+    player.role === "P1"
+      ? 1
+      : -1;
+
+  player.hp = 100;
+
+  player.input =
+    defaultInput();
+
+  player.jumpQueued = false;
+
+  player.onGround = true;
+
+  player.blocking = false;
+
+  player.attackTimer = 0;
+
+  player.dashTimer = 0;
+
+  player.dashHit = false;
+
+  player.stun = 0;
+
+  player.invuln = 0;
+
+  player.cooldowns.fire = 0;
+  player.cooldowns.dash = 0;
+  player.cooldowns.wind = 0;
+  player.cooldowns.punch = 0;
+  player.cooldowns.kick = 0;
+}
+
+
+function resetMatch(room) {
+  resetPlayer(room.players.P1);
+  resetPlayer(room.players.P2);
+
+  room.time = MATCH_TIME;
+
+  room.winner = null;
+
+  room.projectiles = [];
+
+  room.events = [];
+
+  room.rematch.clear();
+
+  room.started =
+    room.players.P1.connected &&
+    room.players.P2.connected;
+}
+
+
+/* =====================================================
+   ROOM MESSAGES
+===================================================== */
+
+function roomMessage(room) {
+  return {
+    type: "room",
+
+    code: room.code,
+
+    started: room.started,
+
+    connected:
+      Number(room.players.P1.connected) +
+      Number(room.players.P2.connected),
+
+    winner: room.winner
+  };
+}
+
+
+/* =====================================================
+   ACTION HELPERS
+===================================================== */
+
+function opponent(room, player) {
+  return player.role === "P1"
+    ? room.players.P2
+    : room.players.P1;
+}
+
+
+function canAct(room, player) {
+  return (
+    room.started &&
+    player.connected &&
+    player.hp > 0 &&
+    player.stun <= 0
+  );
+}
+
+
+function facingOpponent(player, target) {
+  const dx =
+    target.x - player.x;
+
+  return (
+    Math.sign(dx) === player.facing ||
+    Math.abs(dx) < 5
+  );
+}
+
+
+/* =====================================================
+   DAMAGE
+===================================================== */
+
+function damagePlayer(
+  room,
+  attacker,
+  target,
+  amount,
+  type = "hit"
+) {
+  if (
+    !target.connected ||
+    target.hp <= 0 ||
+    target.invuln > 0
+  ) {
+    return false;
+  }
+
+  let actualDamage = amount;
+
+  if (target.blocking) {
+    actualDamage =
+      Math.ceil(
+        amount * 0.25
+      );
+  }
+
+  target.hp = Math.max(
+    0,
+    target.hp - actualDamage
+  );
+
+  target.invuln =
+    target.blocking
+      ? 0.06
+      : 0.12;
+
+  target.stun =
+    target.blocking
+      ? 0.05
+      : 0.14;
+
+  target.vx +=
+    attacker.facing *
+    (
+      target.blocking
+        ? 90
+        : 180
+    );
+
+  room.events.push({
+    type: "hit",
+    x: target.x,
+    y: target.y - 65,
+    damage: actualDamage,
+    attackType: type
+  });
+
+  if (target.hp <= 0) {
+    endMatch(
+      room,
+      attacker.role
+    );
+  }
+
+  return true;
+}
+
+
+/* =====================================================
+   MELEE
+===================================================== */
+
+function meleeAttack(
+  room,
+  player,
+  kind
+) {
+  if (!canAct(room, player)) {
     return;
   }
 
-  room.time -= dt;
+  const cooldownName =
+    kind === "punch"
+      ? "punch"
+      : "kick";
 
-  for (const player of room.players.values()) {
-    updatePlayer(
-      room,
-      player,
-      dt
-    );
+  if (
+    player.cooldowns[cooldownName] > 0
+  ) {
+    return;
   }
 
-  updatePlayersCollision(room);
+  const target =
+    opponent(room, player);
 
-  updateProjectiles(
-    room,
-    dt
-  );
+  player.attackTimer =
+    kind === "punch"
+      ? 0.18
+      : 0.24;
 
-  if (room.time <= 0) {
-    room.time = 0;
+  player.cooldowns[cooldownName] =
+    kind === "punch"
+      ? 0.30
+      : 0.45;
 
-    const p1 = room.players.get(1);
-    const p2 = room.players.get(2);
+  const distance =
+    Math.abs(
+      target.x - player.x
+    );
 
-    let winner = 0;
+  const verticalDistance =
+    Math.abs(
+      target.y - player.y
+    );
 
-    if (p1.hp > p2.hp) {
-      winner = 1;
-    } else if (p2.hp > p1.hp) {
-      winner = 2;
-    }
+  const range =
+    kind === "punch"
+      ? 125
+      : 145;
 
-    finishRound(
+  if (
+    distance <= range &&
+    verticalDistance <= 100 &&
+    facingOpponent(player, target)
+  ) {
+    damagePlayer(
       room,
-      winner
+      player,
+      target,
+      kind === "punch"
+        ? 9
+        : 12,
+      kind
     );
   }
 }
 
-function gameLoop() {
-  const now = Date.now();
+
+/* =====================================================
+   FIRE FIST
+===================================================== */
+
+function fireFist(room, player) {
+  if (!canAct(room, player)) {
+    return;
+  }
+
+  if (
+    player.cooldowns.fire > 0
+  ) {
+    return;
+  }
+
+  const target =
+    opponent(room, player);
+
+  player.cooldowns.fire = 2.5;
+
+  room.events.push({
+    type: "fire",
+    x: player.x +
+      player.facing * 80,
+
+    y: player.y - 65,
+
+    direction:
+      player.facing
+  });
+
+  const distance =
+    Math.abs(
+      target.x - player.x
+    );
+
+  const verticalDistance =
+    Math.abs(
+      target.y - player.y
+    );
+
+  if (
+    distance <= 190 &&
+    verticalDistance <= 110 &&
+    facingOpponent(player, target)
+  ) {
+    damagePlayer(
+      room,
+      player,
+      target,
+      28,
+      "fire"
+    );
+  }
+}
+
+
+/* =====================================================
+   LIGHTNING DASH
+===================================================== */
+
+function lightningDash(room, player) {
+  if (!canAct(room, player)) {
+    return;
+  }
+
+  if (
+    player.cooldowns.dash > 0
+  ) {
+    return;
+  }
+
+  player.cooldowns.dash = 4;
+
+  player.dashTimer = 0.28;
+
+  player.dashHit = false;
+
+  player.invuln =
+    Math.max(
+      player.invuln,
+      0.18
+    );
+
+  player.vx =
+    player.facing * 850;
+
+  room.events.push({
+    type: "dash",
+    x: player.x,
+    y: player.y - 60,
+    direction: player.facing
+  });
+}
+
+
+/* =====================================================
+   WIND SLASH
+===================================================== */
+
+function windSlash(room, player) {
+  if (!canAct(room, player)) {
+    return;
+  }
+
+  if (
+    player.cooldowns.wind > 0
+  ) {
+    return;
+  }
+
+  player.cooldowns.wind = 3;
+
+  const id =
+    Date.now() +
+    Math.random();
+
+  room.projectiles.push({
+    id,
+
+    kind: "wind",
+
+    owner: player.role,
+
+    x:
+      player.x +
+      player.facing * 60,
+
+    y:
+      player.y - 65,
+
+    vx:
+      player.facing * 650,
+
+    vy: 0,
+
+    life: 0.85,
+
+    hit: false
+  });
+
+  room.events.push({
+    type: "wind",
+
+    x:
+      player.x +
+      player.facing * 55,
+
+    y:
+      player.y - 65,
+
+    direction:
+      player.facing
+  });
+}
+
+
+/* =====================================================
+   ACTION DISPATCH
+===================================================== */
+
+function action(room, player, actionName) {
+  switch (actionName) {
+
+    case "attack":
+      meleeAttack(
+        room,
+        player,
+        "punch"
+      );
+      break;
+
+    case "kick":
+      meleeAttack(
+        room,
+        player,
+        "kick"
+      );
+      break;
+
+    case "fire":
+      fireFist(
+        room,
+        player
+      );
+      break;
+
+    case "dash":
+      lightningDash(
+        room,
+        player
+      );
+      break;
+
+    case "wind":
+      windSlash(
+        room,
+        player
+      );
+      break;
+
+  }
+}
+
+
+/* =====================================================
+   INPUT
+===================================================== */
+
+function applyInput(player, incoming) {
+  const oldJump =
+    player.input.jump;
+
+  const next =
+    defaultInput();
+
+  if (
+    incoming &&
+    typeof incoming === "object"
+  ) {
+    next.left =
+      Boolean(incoming.left);
+
+    next.right =
+      Boolean(incoming.right);
+
+    next.jump =
+      Boolean(incoming.jump);
+
+    next.block =
+      Boolean(incoming.block);
+  }
+
+  player.input = next;
+
+  player.blocking =
+    player.input.block &&
+    player.onGround &&
+    player.stun <= 0;
+
+  if (
+    player.input.jump &&
+    !oldJump
+  ) {
+    player.jumpQueued = true;
+  }
+}
+
+
+/* =====================================================
+   PHYSICS
+===================================================== */
+
+function updatePlayer(
+  room,
+  player,
+  dt
+) {
+  if (!player.connected) {
+    return;
+  }
+
+  player.attackTimer =
+    Math.max(
+      0,
+      player.attackTimer - dt
+    );
+
+  player.stun =
+    Math.max(
+      0,
+      player.stun - dt
+    );
+
+  player.invuln =
+    Math.max(
+      0,
+      player.invuln - dt
+    );
+
+  for (const key of Object.keys(
+    player.cooldowns
+  )) {
+    player.cooldowns[key] =
+      Math.max(
+        0,
+        player.cooldowns[key] - dt
+      );
+  }
+
+  player.blocking =
+    player.input.block &&
+    player.onGround &&
+    player.stun <= 0;
+
+
+  /* ================= JUMP ================= */
+
+  if (
+    player.jumpQueued &&
+    player.onGround &&
+    !player.blocking &&
+    player.stun <= 0
+  ) {
+    player.vy =
+      PHYSICS.jumpVelocity;
+
+    player.onGround = false;
+  }
+
+  player.jumpQueued = false;
+
+
+  /* ================= MOVEMENT ================= */
+
+  if (
+    player.dashTimer <= 0
+  ) {
+    let direction = 0;
+
+    if (player.input.left) {
+      direction -= 1;
+    }
+
+    if (player.input.right) {
+      direction += 1;
+    }
+
+    const maxSpeed =
+      player.blocking
+        ? PHYSICS.blockSpeed
+        : PHYSICS.moveSpeed;
+
+    if (direction !== 0) {
+      player.vx =
+        direction * maxSpeed;
+
+      player.facing =
+        direction;
+    } else {
+      player.vx *=
+        Math.pow(
+          0.001,
+          dt
+        );
+    }
+  }
+
+
+  /* ================= GRAVITY ================= */
+
+  player.vy +=
+    PHYSICS.gravity * dt;
+
+  player.x +=
+    player.vx * dt;
+
+  player.y +=
+    player.vy * dt;
+
+
+  /* ================= DASH ================= */
+
+  if (
+    player.dashTimer > 0
+  ) {
+    player.dashTimer =
+      Math.max(
+        0,
+        player.dashTimer - dt
+      );
+
+    const target =
+      opponent(room, player);
+
+    if (
+      !player.dashHit &&
+      target.connected &&
+      target.hp > 0
+    ) {
+      const distance =
+        Math.abs(
+          target.x - player.x
+        );
+
+      const vertical =
+        Math.abs(
+          target.y - player.y
+        );
+
+      if (
+        distance < 65 &&
+        vertical < 100
+      ) {
+        const hit =
+          damagePlayer(
+            room,
+            player,
+            target,
+            18,
+            "dash"
+          );
+
+        if (hit) {
+          player.dashHit = true;
+        }
+      }
+    }
+  }
+
+
+  /* ================= GROUND ================= */
+
+  if (
+    player.y >= WORLD.ground
+  ) {
+    player.y =
+      WORLD.ground;
+
+    player.vy = 0;
+
+    player.onGround = true;
+  } else {
+    player.onGround = false;
+  }
+
+
+  /* ================= BOUNDS ================= */
+
+  const margin = 45;
+
+  if (
+    player.x < margin
+  ) {
+    player.x = margin;
+    player.vx = 0;
+  }
+
+  if (
+    player.x >
+    WORLD.width - margin
+  ) {
+    player.x =
+      WORLD.width - margin;
+
+    player.vx = 0;
+  }
+}
+
+
+/* =====================================================
+   PROJECTILES
+===================================================== */
+
+function updateProjectiles(
+  room,
+  dt
+) {
+  for (
+    let i = room.projectiles.length - 1;
+    i >= 0;
+    i--
+  ) {
+    const p =
+      room.projectiles[i];
+
+    p.life -= dt;
+
+    p.x +=
+      p.vx * dt;
+
+    p.y +=
+      p.vy * dt;
+
+    const owner =
+      room.players[p.owner];
+
+    const target =
+      opponent(room, owner);
+
+    if (
+      !p.hit &&
+      target.connected &&
+      target.hp > 0
+    ) {
+      const distance =
+        Math.hypot(
+          target.x - p.x,
+          (target.y - 65) - p.y
+        );
+
+      if (distance < 65) {
+        p.hit = true;
+
+        damagePlayer(
+          room,
+          owner,
+          target,
+          16,
+          "wind"
+        );
+      }
+    }
+
+    if (
+      p.life <= 0 ||
+      p.x < -100 ||
+      p.x > WORLD.width + 100
+    ) {
+      room.projectiles.splice(
+        i,
+        1
+      );
+    }
+  }
+}
+
+
+/* =====================================================
+   MATCH END
+===================================================== */
+
+function endMatch(room, winner) {
+  if (!room.started) {
+    return;
+  }
+
+  room.started = false;
+
+  room.winner = winner;
+
+  room.events.push({
+    type: "ko",
+    winner
+  });
+
+  broadcast(
+    room,
+    roomMessage(room)
+  );
+}
+
+
+/* =====================================================
+   TICK
+===================================================== */
+
+let lastTick =
+  Date.now();
+
+function gameTick() {
+  const now =
+    Date.now();
+
+  let dt =
+    (now - lastTick) / 1000;
+
+  lastTick = now;
+
+  dt = Math.min(
+    0.05,
+    Math.max(0, dt)
+  );
+
 
   for (const room of rooms.values()) {
-    const dt = Math.min(
-      0.05,
-      (now - room.lastTick) / 1000
-    );
 
-    room.lastTick = now;
+    if (
+      room.started &&
+      room.players.P1.connected &&
+      room.players.P2.connected
+    ) {
 
-    updateRoom(
-      room,
-      dt
-    );
+      room.time -= dt;
 
-    broadcast(
-      room,
-      serializeRoom(room)
-    );
+      updatePlayer(
+        room,
+        room.players.P1,
+        dt
+      );
 
-    room.effects = [];
+      updatePlayer(
+        room,
+        room.players.P2,
+        dt
+      );
+
+      updateProjectiles(
+        room,
+        dt
+      );
+
+
+      if (
+        room.time <= 0
+      ) {
+        room.time = 0;
+
+        const p1 =
+          room.players.P1;
+
+        const p2 =
+          room.players.P2;
+
+        if (
+          p1.hp > p2.hp
+        ) {
+          endMatch(
+            room,
+            "P1"
+          );
+        } else if (
+          p2.hp > p1.hp
+        ) {
+          endMatch(
+            room,
+            "P2"
+          );
+        } else {
+          endMatch(
+            room,
+            "draw"
+          );
+        }
+      }
+    }
   }
 }
 
 setInterval(
-  gameLoop,
-  1000 / 30
+  gameTick,
+  1000 / 60
 );
 
-wss.on("connection", ws => {
-  ws.roomCode = null;
-  ws.playerId = null;
+
+/* =====================================================
+   BROADCAST LOOP
+===================================================== */
+
+setInterval(() => {
+  for (const room of rooms.values()) {
+
+    if (
+      room.clients.size > 0
+    ) {
+      broadcastState(room);
+    }
+
+  }
+}, 1000 / 30);
+
+
+/* =====================================================
+   WEBSOCKET CONNECTIONS
+===================================================== */
+
+wss.on("connection", (ws) => {
+
+  ws.room = null;
+  ws.role = null;
+
 
   send(ws, {
     type: "connected"
   });
 
-  ws.on("message", raw => {
-    let message;
+
+  ws.on("message", (raw) => {
+
+    let msg;
 
     try {
-      message =
-        JSON.parse(raw.toString());
+      msg =
+        JSON.parse(
+          raw.toString()
+        );
     } catch {
       return;
     }
 
-    /*
-      CREATE
-    */
+
+    /* ================= CREATE ================= */
 
     if (
-      message.type === "create"
+      msg.type === "create"
     ) {
-      if (ws.roomCode) {
+
+      if (ws.room) {
         return;
       }
 
+      const code =
+        randomRoomCode();
+
       const room =
-        createRoom();
+        createRoom(code);
 
-      const player =
-        room.players.get(1);
+      room.players.P1.connected =
+        true;
 
-      player.ws = ws;
-      player.connected = true;
+      room.clients.set(
+        "P1",
+        ws
+      );
 
-      ws.roomCode =
-        room.code;
+      ws.room = room;
+      ws.role = "P1";
 
-      ws.playerId = 1;
+      rooms.set(
+        code,
+        room
+      );
 
       send(ws, {
-        type: "roomCreated",
-        code: room.code,
-        player: 1
+        type: "welcome",
+        role: "P1",
+        code
       });
 
-      broadcastRoom(room);
+      send(
+        ws,
+        roomMessage(room)
+      );
+
+      broadcastState(room);
 
       return;
     }
 
-    /*
-      JOIN
-    */
+
+    /* ================= JOIN ================= */
 
     if (
-      message.type === "join"
+      msg.type === "join"
     ) {
-      if (ws.roomCode) {
+
+      if (ws.room) {
         return;
       }
 
       const code =
         String(
-          message.code || ""
+          msg.code || ""
         )
         .trim()
         .toUpperCase();
@@ -994,228 +1355,256 @@ wss.on("connection", ws => {
       if (!room) {
         send(ws, {
           type: "error",
-          message:
-            "Room does not exist."
+          message: "Room not found."
         });
 
         return;
       }
 
-      let selectedPlayer = null;
+      let role = null;
 
-      for (const player of room.players.values()) {
-        if (!player.connected) {
-          selectedPlayer =
-            player;
-          break;
-        }
+      if (
+        !room.players.P1.connected
+      ) {
+        role = "P1";
+      } else if (
+        !room.players.P2.connected
+      ) {
+        role = "P2";
       }
 
-      if (!selectedPlayer) {
+      if (!role) {
         send(ws, {
           type: "error",
-          message:
-            "Room is full."
+          message: "Room is full."
         });
 
         return;
       }
 
-      selectedPlayer.ws = ws;
-      selectedPlayer.connected = true;
+      const player =
+        room.players[role];
 
-      ws.roomCode =
-        room.code;
+      player.connected = true;
 
-      ws.playerId =
-        selectedPlayer.id;
+      room.clients.set(
+        role,
+        ws
+      );
+
+      ws.room = room;
+      ws.role = role;
+
 
       send(ws, {
-        type: "joined",
-        code: room.code,
-        player:
-          selectedPlayer.id
+        type: "welcome",
+        role,
+        code
       });
 
-      const bothConnected =
-        [...room.players.values()]
-          .every(
-            p => p.connected
-          );
 
-      if (bothConnected) {
-        startRound(room);
-      } else {
-        broadcastRoom(room);
-      }
-
-      return;
-    }
-
-    /*
-      INPUT
-    */
-
-    if (
-      message.type === "input"
-    ) {
       if (
-        !ws.roomCode ||
-        !ws.playerId
+        room.players.P1.connected &&
+        room.players.P2.connected
       ) {
-        return;
+        resetMatch(room);
       }
 
-      const room =
-        rooms.get(
-          ws.roomCode
-        );
 
-      if (!room) return;
-
-      const player =
-        room.players.get(
-          ws.playerId
-        );
-
-      if (!player) return;
-
-      const input =
-        message.input || {};
-
-      player.input = {
-        left: !!input.left,
-        right: !!input.right,
-        jump: !!input.jump,
-        block: !!input.block
-      };
-
-      return;
-    }
-
-    /*
-      ACTION
-    */
-
-    if (
-      message.type === "action"
-    ) {
-      if (
-        !ws.roomCode ||
-        !ws.playerId
-      ) {
-        return;
-      }
-
-      const room =
-        rooms.get(
-          ws.roomCode
-        );
-
-      if (!room) return;
-
-      const player =
-        room.players.get(
-          ws.playerId
-        );
-
-      if (!player) return;
-
-      handleAction(
+      broadcast(
         room,
+        roomMessage(room)
+      );
+
+      broadcastState(room);
+
+      return;
+    }
+
+
+    /* ================= INPUT ================= */
+
+    if (
+      msg.type === "input"
+    ) {
+
+      if (
+        !ws.room ||
+        !ws.role
+      ) {
+        return;
+      }
+
+      const player =
+        ws.room.players[
+          ws.role
+        ];
+
+      applyInput(
         player,
-        message.action
+        msg.input
       );
 
       return;
     }
 
-    /*
-      REMATCH
-    */
+
+    /* ================= ACTION ================= */
 
     if (
-      message.type === "rematch"
+      msg.type === "action"
     ) {
-      const room =
-        rooms.get(
-          ws.roomCode
-        );
 
-      if (!room) return;
+      if (
+        !ws.room ||
+        !ws.role
+      ) {
+        return;
+      }
+
+      const player =
+        ws.room.players[
+          ws.role
+        ];
+
+      if (
+        typeof msg.action !==
+        "string"
+      ) {
+        return;
+      }
+
+      action(
+        ws.room,
+        player,
+        msg.action
+      );
+
+      return;
+    }
+
+
+    /* ================= REMATCH ================= */
+
+    if (
+      msg.type === "rematch"
+    ) {
+
+      if (
+        !ws.room ||
+        !ws.role
+      ) {
+        return;
+      }
+
+      const room =
+        ws.room;
 
       room.rematch.add(
-        ws.playerId
+        ws.role
       );
 
-      broadcast(room, {
-        type: "rematchWaiting",
-        player: ws.playerId,
-        count: room.rematch.size
-      });
-
       if (
-        room.rematch.size ===
-        MAX_PLAYERS
+        room.rematch.has("P1") &&
+        room.rematch.has("P2") &&
+        room.players.P1.connected &&
+        room.players.P2.connected
       ) {
-        startRound(room);
+        resetMatch(room);
+
+        broadcast(
+          room,
+          roomMessage(room)
+        );
+
+        broadcastState(room);
       }
 
       return;
     }
+
   });
 
+
+  /* ===================================================
+     DISCONNECT
+  ================================================== */
+
   ws.on("close", () => {
-    if (!ws.roomCode) return;
 
     const room =
-      rooms.get(
-        ws.roomCode
-      );
+      ws.room;
 
-    if (!room) return;
+    const role =
+      ws.role;
+
+    if (
+      !room ||
+      !role
+    ) {
+      return;
+    }
+
+    if (
+      room.clients.get(role) === ws
+    ) {
+      room.clients.delete(role);
+    }
 
     const player =
-      room.players.get(
-        ws.playerId
-      );
+      room.players[role];
 
     if (player) {
       player.connected = false;
-      player.ws = null;
-      player.input =
-        emptyInput();
+      player.input = defaultInput();
+      player.blocking = false;
     }
 
     room.started = false;
-    room.finished = false;
 
-    broadcast(room, {
-      type: "playerLeft"
-    });
+    room.winner = null;
 
-    broadcastRoom(room);
+    room.projectiles = [];
 
-    const connected =
-      [...room.players.values()]
-        .some(
-          p => p.connected
-        );
+    room.rematch.clear();
 
-    if (!connected) {
+
+    if (
+      room.clients.size === 0
+    ) {
       rooms.delete(
         room.code
       );
+
+      return;
     }
+
+
+    broadcast(
+      room,
+      roomMessage(room)
+    );
+
+    broadcastState(room);
   });
+
 });
 
-server.listen(
+
+/* =====================================================
+   START SERVER
+===================================================== */
+
+httpServer.listen(
   PORT,
   "0.0.0.0",
   () => {
     console.log(
       `Stickman Fight running on port ${PORT}`
+    );
+
+    console.log(
+      `Open http://localhost:${PORT}`
     );
   }
 );
