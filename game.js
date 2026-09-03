@@ -17,9 +17,12 @@ const WORLD_H = 600;
 let socket = null;
 
 let role = null;
+
 let roomCode = "";
 
 let state = null;
+
+let selectedRounds = 5;
 
 let lastFrame =
   performance.now();
@@ -27,35 +30,37 @@ let lastFrame =
 let previousCanvasWidth = 0;
 let previousCanvasHeight = 0;
 
+const visuals = [];
+
 
 /* =====================================================
    INPUT
 ===================================================== */
 
 const input = {
+
   left: false,
   right: false,
   jump: false,
   block: false
+
 };
-
-
-/* =====================================================
-   VISUAL EFFECTS
-===================================================== */
-
-const visuals = [];
 
 
 /* =====================================================
    ELEMENTS
 ===================================================== */
 
-const $ = (id) =>
-  document.getElementById(id);
+const $ =
+  (id) =>
+    document.getElementById(id);
+
 
 const createBtn =
   $("createBtn");
+
+const cpuBtn =
+  $("cpuBtn");
 
 const showJoinBtn =
   $("showJoinBtn");
@@ -63,11 +68,11 @@ const showJoinBtn =
 const joinBtn =
   $("joinBtn");
 
-const roomInput =
-  $("roomInput");
-
 const joinBox =
   $("joinBox");
+
+const roomInput =
+  $("roomInput");
 
 const roomInfo =
   $("roomInfo");
@@ -90,14 +95,20 @@ const lobby =
 const game =
   $("game");
 
-const roleEl =
-  $("role");
+const roundLabel =
+  $("roundLabel");
 
 const timerEl =
   $("timer");
 
-const gameStatusEl =
+const gameStatus =
   $("gameStatus");
+
+const p1Score =
+  $("p1Score");
+
+const p2Score =
+  $("p2Score");
 
 const p1Hp =
   $("p1Hp");
@@ -117,12 +128,62 @@ const winOverlay =
 const winnerText =
   $("winnerText");
 
+const roundResult =
+  $("roundResult");
+
 const rematchBtn =
   $("rematchBtn");
 
 
 /* =====================================================
-   WEBSOCKET
+   ROUND BUTTONS
+===================================================== */
+
+document
+  .querySelectorAll(
+    "[data-rounds]"
+  )
+  .forEach(
+    (button) => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          selectedRounds =
+            Number(
+              button.dataset.rounds
+            ) === 10
+              ? 10
+              : 5;
+
+
+          document
+            .querySelectorAll(
+              "[data-rounds]"
+            )
+            .forEach(
+              (b) => {
+                b.classList.remove(
+                  "selected"
+                );
+              }
+            );
+
+
+          button.classList.add(
+            "selected"
+          );
+
+        }
+      );
+
+    }
+  );
+
+
+/* =====================================================
+   CONNECT
 ===================================================== */
 
 const socketUrl =
@@ -149,7 +210,7 @@ function connect() {
       );
 
       statusEl.textContent =
-        "Connected. Create or join a room.";
+        "Connected.";
 
     }
   );
@@ -169,19 +230,8 @@ function connect() {
       statusEl.textContent =
         "Connection lost. Refresh the page.";
 
-      gameStatusEl.textContent =
+      gameStatus.textContent =
         "OFFLINE";
-
-    }
-  );
-
-
-  socket.addEventListener(
-    "error",
-    () => {
-
-      connectionEl.textContent =
-        "CONNECTION ERROR";
 
     }
   );
@@ -194,15 +244,22 @@ function connect() {
       let msg;
 
       try {
+
         msg =
           JSON.parse(
             event.data
           );
+
       } catch {
+
         return;
+
       }
 
-      handleMessage(msg);
+
+      handleMessage(
+        msg
+      );
 
     }
   );
@@ -210,7 +267,9 @@ function connect() {
 }
 
 
-function send(data) {
+function send(
+  data
+) {
 
   if (
     !socket ||
@@ -220,20 +279,27 @@ function send(data) {
     return;
   }
 
+
   socket.send(
-    JSON.stringify(data)
+    JSON.stringify(
+      data
+    )
   );
 
 }
 
 
 /* =====================================================
-   SERVER MESSAGES
+   SERVER MESSAGE
 ===================================================== */
 
-function handleMessage(msg) {
+function handleMessage(
+  msg
+) {
 
-  switch (msg.type) {
+  switch (
+    msg.type
+  ) {
 
     case "welcome":
 
@@ -246,22 +312,23 @@ function handleMessage(msg) {
       roomCodeEl.textContent =
         roomCode;
 
-      roleEl.textContent =
-        role;
-
       roomInfo.hidden =
         false;
 
       createBtn.disabled =
         true;
 
+      cpuBtn.disabled =
+        true;
+
       showJoinBtn.disabled =
         true;
 
+
       statusEl.textContent =
-        role === "P1"
-          ? "Room created. Waiting for Player 2..."
-          : "Joined room. Waiting for Player 2...";
+        msg.mode === "cpu"
+          ? `VS COMPUTER · ${msg.rounds} ROUNDS`
+          : `ROOM CREATED · ${msg.rounds} ROUNDS`;
 
       break;
 
@@ -276,7 +343,9 @@ function handleMessage(msg) {
         roomCode;
 
 
-      if (msg.started) {
+      if (
+        msg.started
+      ) {
 
         lobby.hidden =
           true;
@@ -284,10 +353,13 @@ function handleMessage(msg) {
         game.hidden =
           false;
 
-        gameStatusEl.textContent =
-          "FIGHT!";
+      }
 
-      } else {
+
+      if (
+        msg.phase ===
+        "lobby"
+      ) {
 
         lobby.hidden =
           false;
@@ -295,27 +367,10 @@ function handleMessage(msg) {
         game.hidden =
           true;
 
-
-        if (
-          msg.winner
-        ) {
-
-          statusEl.textContent =
-            "Match finished. Rematch from the game screen.";
-
-        } else if (
-          msg.connected >= 2
-        ) {
-
-          statusEl.textContent =
-            "Both players connected.";
-
-        } else {
-
-          statusEl.textContent =
-            "Waiting for Player 2...";
-
-        }
+        statusEl.textContent =
+          msg.mode === "cpu"
+            ? "Preparing CPU match..."
+            : "Waiting for Player 2...";
 
       }
 
@@ -327,8 +382,13 @@ function handleMessage(msg) {
       state =
         msg;
 
+
       if (
-        msg.started
+        msg.started ||
+        msg.phase ===
+          "round_end" ||
+        msg.phase ===
+          "match_end"
       ) {
 
         lobby.hidden =
@@ -348,19 +408,36 @@ function handleMessage(msg) {
 
 
       if (
-        msg.winner
+        msg.phase ===
+        "match_end"
       ) {
 
-        showWinner(
+        showMatchWinner(
           msg.winner
         );
 
-      } else {
+      }
+
+
+      else if (
+        msg.phase ===
+        "round_end"
+      ) {
+
+        showRoundResult(
+          msg.roundWinner
+        );
+
+      }
+
+
+      else {
 
         winOverlay.hidden =
           true;
 
       }
+
 
       break;
 
@@ -369,11 +446,7 @@ function handleMessage(msg) {
 
       statusEl.textContent =
         msg.message ||
-        "Error";
-
-      gameStatusEl.textContent =
-        msg.message ||
-        "Error";
+        "Error.";
 
       break;
 
@@ -383,15 +456,39 @@ function handleMessage(msg) {
 
 
 /* =====================================================
-   LOBBY
+   LOBBY BUTTONS
 ===================================================== */
 
 createBtn.addEventListener(
   "click",
   () => {
+
     send({
-      type: "create"
+      type:
+        "create",
+
+      rounds:
+        selectedRounds
+
     });
+
+  }
+);
+
+
+cpuBtn.addEventListener(
+  "click",
+  () => {
+
+    send({
+      type:
+        "cpu",
+
+      rounds:
+        selectedRounds
+
+    });
+
   }
 );
 
@@ -403,10 +500,13 @@ showJoinBtn.addEventListener(
     joinBox.hidden =
       !joinBox.hidden;
 
+
     if (
       !joinBox.hidden
     ) {
+
       roomInput.focus();
+
     }
 
   }
@@ -422,17 +522,23 @@ joinBtn.addEventListener(
         .trim()
         .toUpperCase();
 
+
     if (!code) {
 
       statusEl.textContent =
         "Enter a room code.";
 
       return;
+
     }
 
+
     send({
-      type: "join",
+      type:
+        "join",
+
       code
+
     });
 
   }
@@ -444,9 +550,12 @@ roomInput.addEventListener(
   (event) => {
 
     if (
-      event.key === "Enter"
+      event.key ===
+      "Enter"
     ) {
+
       joinBtn.click();
+
     }
 
   }
@@ -461,6 +570,7 @@ copyBtn.addEventListener(
       return;
     }
 
+
     try {
 
       await navigator.clipboard.writeText(
@@ -470,10 +580,13 @@ copyBtn.addEventListener(
       copyBtn.textContent =
         "COPIED!";
 
+
       setTimeout(
         () => {
+
           copyBtn.textContent =
             "COPY";
+
         },
         1000
       );
@@ -489,94 +602,126 @@ copyBtn.addEventListener(
 );
 
 
+/* =====================================================
+   REMATCH
+===================================================== */
+
 rematchBtn.addEventListener(
   "click",
   () => {
 
     send({
-      type: "rematch"
+      type:
+        "rematch"
     });
 
-    winnerText.textContent =
-      "WAITING FOR OPPONENT...";
 
     rematchBtn.disabled =
       true;
+
+
+    winnerText.textContent =
+      state?.mode === "cpu"
+        ? "STARTING..."
+        : "WAITING FOR OPPONENT...";
 
   }
 );
 
 
 /* =====================================================
-   PC KEYBOARD
+   KEYBOARD
 ===================================================== */
 
-const keyMapP1 = {
+const p1Map = {
+
   KeyA: "left",
   KeyD: "right",
   KeyW: "jump",
   KeyG: "block"
+
 };
 
-const keyMapP2 = {
+
+const p2Map = {
+
   ArrowLeft: "left",
   ArrowRight: "right",
   ArrowUp: "jump",
   KeyK: "block"
+
 };
 
 
 function getKeyMap() {
 
   return role === "P2"
-    ? keyMapP2
-    : keyMapP1;
+    ? p2Map
+    : p1Map;
 
 }
 
 
-function getKeyboardAction(
+function keyboardAction(
   code
 ) {
 
-  if (role === "P1") {
+  if (
+    role === "P1"
+  ) {
 
-    if (code === "KeyF")
-      return "attack";
+    if (
+      code === "KeyF"
+    ) return "attack";
 
-    if (code === "KeyR")
-      return "kick";
+    if (
+      code === "KeyR"
+    ) return "kick";
 
-    if (code === "Digit1")
-      return "fire";
+    if (
+      code === "Digit1"
+    ) return "fire";
 
-    if (code === "Digit2")
-      return "dash";
+    if (
+      code === "Digit2"
+    ) return "dash";
 
-    if (code === "Digit3")
-      return "wind";
+    if (
+      code === "Digit3"
+    ) return "wind";
+
   }
 
 
-  if (role === "P2") {
+  if (
+    role === "P2"
+  ) {
 
-    if (code === "KeyL")
-      return "attack";
+    if (
+      code === "KeyL"
+    ) return "attack";
 
-    if (code === "KeyO")
-      return "kick";
+    if (
+      code === "KeyO"
+    ) return "kick";
 
-    if (code === "Digit8")
-      return "fire";
+    if (
+      code === "Digit8"
+    ) return "fire";
 
-    if (code === "Digit9")
-      return "dash";
+    if (
+      code === "Digit9"
+    ) return "dash";
 
-    if (code === "Digit0")
-      return "wind";
+    if (
+      code === "Digit0"
+    ) return "wind";
+
   }
+
 
   return null;
+
 }
 
 
@@ -586,6 +731,7 @@ window.addEventListener(
 
     const map =
       getKeyMap();
+
 
     if (
       map[event.code]
@@ -601,9 +747,10 @@ window.addEventListener(
 
 
     const action =
-      getKeyboardAction(
+      keyboardAction(
         event.code
       );
+
 
     if (
       action &&
@@ -611,8 +758,11 @@ window.addEventListener(
     ) {
 
       send({
-        type: "action",
+        type:
+          "action",
+
         action
+
       });
 
       event.preventDefault();
@@ -629,6 +779,7 @@ window.addEventListener(
 
     const map =
       getKeyMap();
+
 
     if (
       map[event.code]
@@ -650,35 +801,48 @@ window.addEventListener(
   "blur",
   () => {
 
-    input.left = false;
-    input.right = false;
-    input.jump = false;
-    input.block = false;
+    input.left =
+      false;
 
-    send({
-      type: "input",
-      input
-    });
+    input.right =
+      false;
+
+    input.jump =
+      false;
+
+    input.block =
+      false;
 
   }
 );
 
 
 /* =====================================================
-   INPUT SEND LOOP
+   INPUT LOOP
 ===================================================== */
 
 setInterval(
   () => {
 
     send({
-      type: "input",
+
+      type:
+        "input",
 
       input: {
-        left: input.left,
-        right: input.right,
-        jump: input.jump,
-        block: input.block
+
+        left:
+          input.left,
+
+        right:
+          input.right,
+
+        jump:
+          input.jump,
+
+        block:
+          input.block
+
       }
 
     });
@@ -689,7 +853,7 @@ setInterval(
 
 
 /* =====================================================
-   MOBILE CONTROLS
+   MOBILE
 ===================================================== */
 
 document
@@ -708,18 +872,20 @@ document
 
           event.preventDefault();
 
-          try {
-            button.setPointerCapture(
-              event.pointerId
-            );
-          } catch {}
-
           input[key] =
             true;
 
           button.classList.add(
             "pressed"
           );
+
+          try {
+
+            button.setPointerCapture(
+              event.pointerId
+            );
+
+          } catch {}
 
         };
 
@@ -776,21 +942,30 @@ document
 
           event.preventDefault();
 
+
+          send({
+
+            type:
+              "action",
+
+            action:
+              button.dataset.action
+
+          });
+
+
           button.classList.add(
             "pressed"
           );
 
-          send({
-            type: "action",
-            action:
-              button.dataset.action
-          });
 
           setTimeout(
             () => {
+
               button.classList.remove(
                 "pressed"
               );
+
             },
             120
           );
@@ -815,6 +990,7 @@ function updateHUD() {
     return;
   }
 
+
   const p1 =
     state.players.P1;
 
@@ -829,12 +1005,16 @@ function updateHUD() {
         0,
         Math.min(
           100,
-          Number(p1.hp)
+          Number(
+            p1.hp
+          )
         )
       );
 
+
     p1Hp.style.width =
       `${hp}%`;
+
 
     p1HpText.textContent =
       `${Math.ceil(hp)} HP`;
@@ -849,12 +1029,16 @@ function updateHUD() {
         0,
         Math.min(
           100,
-          Number(p2.hp)
+          Number(
+            p2.hp
+          )
         )
       );
 
+
     p2Hp.style.width =
       `${hp}%`;
+
 
     p2HpText.textContent =
       `${Math.ceil(hp)} HP`;
@@ -862,20 +1046,34 @@ function updateHUD() {
   }
 
 
+  p1Score.textContent =
+    state.scores?.P1 ??
+    0;
+
+
+  p2Score.textContent =
+    state.scores?.P2 ??
+    0;
+
+
+  roundLabel.textContent =
+    `ROUND ${state.round || 1} / ${state.roundsToWin || 5}`;
+
+
   timerEl.textContent =
     Math.ceil(
-      Number(state.time || 0)
+      Number(
+        state.time || 0
+      )
     );
 
 
-  updateCooldownButtons();
-
-
   if (
-    state.started
+    state.phase ===
+    "fighting"
   ) {
 
-    gameStatusEl.textContent =
+    gameStatus.textContent =
       role === "P1"
         ? "YOU ARE PLAYER 1"
         : "YOU ARE PLAYER 2";
@@ -885,97 +1083,59 @@ function updateHUD() {
 }
 
 
-function updateCooldownButtons() {
+/* =====================================================
+   ROUND RESULTS
+===================================================== */
+
+function showRoundResult(
+  winner
+) {
+
+  winOverlay.hidden =
+    false;
+
+  rematchBtn.disabled =
+    true;
+
 
   if (
-    !state ||
-    !role
-  ) {
-    return;
-  }
-
-  const player =
-    state.players?.[role];
-
-  if (!player) {
-    return;
-  }
-
-
-  const cooldowns =
-    player.cooldowns || {};
-
-
-  const buttons = {
-    fire:
-      document.querySelector(
-        '[data-action="fire"]'
-      ),
-
-    dash:
-      document.querySelector(
-        '[data-action="dash"]'
-      ),
-
-    wind:
-      document.querySelector(
-        '[data-action="wind"]'
-      )
-  };
-
-
-  const names = {
-    fire: "🔥 FIRE",
-    dash: "⚡ DASH",
-    wind: "🌪 WIND"
-  };
-
-
-  for (
-    const key of Object.keys(
-      buttons
-    )
+    winner === "draw"
   ) {
 
-    const button =
-      buttons[key];
+    winnerText.textContent =
+      "DRAW";
 
-    if (!button) {
-      continue;
-    }
+    roundResult.textContent =
+      "NEXT ROUND";
 
-    const cd =
-      Number(
-        cooldowns[key] || 0
-      );
+  }
 
+  else if (
+    winner === role
+  ) {
 
-    if (cd > 0) {
+    winnerText.textContent =
+      "ROUND WON";
 
-      button.textContent =
-        `${names[key]} ${cd.toFixed(1)}`;
+    roundResult.textContent =
+      `SCORE: ${state.scores[role]}`;
 
-      button.classList.add(
-        "cooldown"
-      );
+  }
 
-    } else {
+  else {
 
-      button.textContent =
-        names[key];
+    winnerText.textContent =
+      "ROUND LOST";
 
-      button.classList.remove(
-        "cooldown"
-      );
-
-    }
+    roundResult.textContent =
+      `SCORE: ${state.scores[role]}`;
 
   }
 
 }
 
 
-function showWinner(
+function showMatchWinner(
   winner
 ) {
 
@@ -987,120 +1147,476 @@ function showWinner(
 
 
   if (
-    winner === "draw"
+    winner ===
+    "draw"
   ) {
 
     winnerText.textContent =
-      "DRAW!";
+      "DRAW";
 
+    roundResult.textContent =
+      "MATCH OVER";
+
+    return;
+
+  }
+
+
+  if (
+    winner === role
+  ) {
+
+    winnerText.textContent =
+      "YOU WIN!";
+
+  } else {
+
+    winnerText.textContent =
+      "YOU LOSE!";
+
+  }
+
+
+  roundResult.textContent =
+    `FINAL SCORE ${state.scores.P1} - ${state.scores.P2}`;
+
+}
+
+
+/* =====================================================
+   EFFECTS
+===================================================== */
+
+function processEvents(
+  events
+) {
+
+  for (
+    const event
+    of events
+  ) {
+
+    spawnEffect(
+      event
+    );
+
+  }
+
+}
+
+
+function spawnEffect(
+  event
+) {
+
+  if (!event) {
     return;
   }
 
 
-  winnerText.textContent =
-    winner === role
-      ? "YOU WIN!"
-      : "YOU LOSE!";
+  const effect = {
 
-}
+    type:
+      event.type,
 
+    x:
+      Number(
+        event.x || 0
+      ),
 
-/* =====================================================
-   CANVAS RESIZE
-===================================================== */
+    y:
+      Number(
+        event.y || 0
+      ),
 
-function resizeCanvas() {
+    direction:
+      Number(
+        event.direction || 1
+      ),
 
-  const rect =
-    canvas.getBoundingClientRect();
+    life:
+      .45,
 
-  const width =
-    Math.max(
-      1,
-      rect.width
-    );
+    maxLife:
+      .45,
 
-  const height =
-    Math.max(
-      1,
-      rect.height
-    );
+    particles: []
 
-  const dpr =
-    Math.min(
-      window.devicePixelRatio || 1,
-      2
-    );
+  };
 
 
-  canvas.width =
-    Math.floor(
-      width * dpr
-    );
+  if (
+    event.type ===
+    "hit"
+  ) {
 
-  canvas.height =
-    Math.floor(
-      height * dpr
-    );
+    effect.life =
+      .3;
+
+    effect.maxLife =
+      .3;
 
 
-  ctx.setTransform(
-    dpr,
-    0,
-    0,
-    dpr,
-    0,
-    0
+    for (
+      let i = 0;
+      i < 12;
+      i++
+    ) {
+
+      const angle =
+        Math.random() *
+        Math.PI *
+        2;
+
+
+      const speed =
+        50 +
+        Math.random() *
+        180;
+
+
+      effect.particles.push({
+
+        x: 0,
+
+        y: 0,
+
+        vx:
+          Math.cos(
+            angle
+          ) * speed,
+
+        vy:
+          Math.sin(
+            angle
+          ) * speed
+
+      });
+
+    }
+
+  }
+
+
+  visuals.push(
+    effect
   );
 
 }
 
 
-window.addEventListener(
-  "resize",
-  resizeCanvas
-);
+function updateVisuals(
+  dt
+) {
+
+  for (
+    let i =
+      visuals.length - 1;
+
+    i >= 0;
+
+    i--
+  ) {
+
+    const effect =
+      visuals[i];
 
 
-/* =====================================================
-   WORLD TRANSFORM
-===================================================== */
-
-function setupWorldTransform() {
-
-  const width =
-    canvas.clientWidth;
-
-  const height =
-    canvas.clientHeight;
+    effect.life -=
+      dt;
 
 
-  const scale =
-    Math.min(
-      width / WORLD_W,
-      height / WORLD_H
-    );
+    if (
+      effect.type ===
+      "hit"
+    ) {
+
+      for (
+        const p
+        of effect.particles
+      ) {
+
+        p.x +=
+          p.vx * dt;
+
+        p.y +=
+          p.vy * dt;
+
+      }
+
+    }
 
 
-  const offsetX =
-    (width -
-      WORLD_W * scale) /
-    2;
+    if (
+      effect.life <= 0
+    ) {
 
-  const offsetY =
-    (height -
-      WORLD_H * scale) /
-    2;
+      visuals.splice(
+        i,
+        1
+      );
+
+    }
+
+  }
+
+}
 
 
-  ctx.setTransform(
-    scale,
-    0,
-    0,
-    scale,
-    offsetX,
-    offsetY
-  );
+function drawVisuals() {
+
+  for (
+    const effect
+    of visuals
+  ) {
+
+    const progress =
+      1 -
+      effect.life /
+      effect.maxLife;
+
+
+    const alpha =
+      Math.max(
+        0,
+        1 - progress
+      );
+
+
+    ctx.save();
+
+    ctx.globalAlpha =
+      alpha;
+
+
+    if (
+      effect.type ===
+      "fire"
+    ) {
+
+      ctx.translate(
+        effect.x,
+        effect.y
+      );
+
+
+      const radius =
+        25 +
+        progress *
+        55;
+
+
+      const gradient =
+        ctx.createRadialGradient(
+          0,
+          0,
+          4,
+          0,
+          0,
+          radius
+        );
+
+
+      gradient.addColorStop(
+        0,
+        "#fff"
+      );
+
+      gradient.addColorStop(
+        .25,
+        "#ffd65a"
+      );
+
+      gradient.addColorStop(
+        .6,
+        "#ff6b2d"
+      );
+
+      gradient.addColorStop(
+        1,
+        "rgba(255,0,0,0)"
+      );
+
+
+      ctx.fillStyle =
+        gradient;
+
+
+      ctx.beginPath();
+
+      ctx.arc(
+        0,
+        0,
+        radius,
+        0,
+        Math.PI * 2
+      );
+
+      ctx.fill();
+
+    }
+
+
+    else if (
+      effect.type ===
+      "dash"
+    ) {
+
+      ctx.translate(
+        effect.x,
+        effect.y
+      );
+
+
+      ctx.strokeStyle =
+        "#76eaff";
+
+      ctx.lineWidth =
+        8;
+
+
+      for (
+        let i = 0;
+        i < 7;
+        i++
+      ) {
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+          -effect.direction *
+            i *
+            20,
+
+          -25 +
+            i *
+            8
+        );
+
+        ctx.lineTo(
+          -effect.direction *
+            (100 +
+              i *
+              15),
+
+          -25 +
+            i *
+            8
+        );
+
+        ctx.stroke();
+
+      }
+
+    }
+
+
+    else if (
+      effect.type ===
+      "wind"
+    ) {
+
+      ctx.translate(
+        effect.x,
+        effect.y
+      );
+
+
+      ctx.scale(
+        effect.direction,
+        1
+      );
+
+
+      ctx.strokeStyle =
+        "#c2ffff";
+
+      ctx.lineWidth =
+        8;
+
+
+      ctx.beginPath();
+
+      ctx.arc(
+        0,
+        0,
+        35 +
+          progress *
+          60,
+        -1,
+        1
+      );
+
+      ctx.stroke();
+
+    }
+
+
+    else if (
+      effect.type ===
+      "hit"
+    ) {
+
+      ctx.translate(
+        effect.x,
+        effect.y
+      );
+
+
+      ctx.strokeStyle =
+        "#fff";
+
+      ctx.lineWidth =
+        4;
+
+
+      for (
+        const p
+        of effect.particles
+      ) {
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+          p.x,
+          p.y
+        );
+
+        ctx.lineTo(
+          p.x -
+            p.vx *
+            .035,
+
+          p.y -
+            p.vy *
+            .035
+        );
+
+        ctx.stroke();
+
+      }
+
+
+      ctx.beginPath();
+
+      ctx.arc(
+        0,
+        0,
+        15 +
+          progress *
+          45,
+        0,
+        Math.PI * 2
+      );
+
+      ctx.stroke();
+
+    }
+
+
+    ctx.restore();
+
+  }
 
 }
 
@@ -1119,13 +1635,14 @@ function drawArena() {
       WORLD_H
     );
 
+
   gradient.addColorStop(
     0,
     "#10162b"
   );
 
   gradient.addColorStop(
-    0.6,
+    .55,
     "#171d38"
   );
 
@@ -1159,7 +1676,7 @@ function drawArena() {
   );
 
   ctx.fillStyle =
-    "rgba(255,255,255,0.12)";
+    "rgba(255,255,255,.12)";
 
   ctx.fill();
 
@@ -1180,8 +1697,9 @@ function drawArena() {
       (i * 83) %
       350;
 
+
     ctx.fillStyle =
-      "rgba(255,255,255,0.35)";
+      "rgba(255,255,255,.35)";
 
     ctx.fillRect(
       x,
@@ -1195,10 +1713,11 @@ function drawArena() {
 
   /* Grid */
 
-  ctx.lineWidth = 1;
-
   ctx.strokeStyle =
-    "rgba(255,255,255,0.045)";
+    "rgba(255,255,255,.045)";
+
+  ctx.lineWidth =
+    1;
 
 
   for (
@@ -1253,7 +1772,7 @@ function drawArena() {
     510;
 
 
-  const groundGradient =
+  const ground =
     ctx.createLinearGradient(
       0,
       groundY,
@@ -1261,19 +1780,21 @@ function drawArena() {
       WORLD_H
     );
 
-  groundGradient.addColorStop(
+
+  ground.addColorStop(
     0,
     "#242b4b"
   );
 
-  groundGradient.addColorStop(
+  ground.addColorStop(
     1,
     "#0a0d19"
   );
 
 
   ctx.fillStyle =
-    groundGradient;
+    ground;
+
 
   ctx.fillRect(
     0,
@@ -1283,8 +1804,6 @@ function drawArena() {
       groundY
   );
 
-
-  /* Ground line */
 
   ctx.beginPath();
 
@@ -1298,7 +1817,9 @@ function drawArena() {
     groundY
   );
 
-  ctx.lineWidth = 5;
+
+  ctx.lineWidth =
+    5;
 
   ctx.strokeStyle =
     "#7781a8";
@@ -1306,7 +1827,7 @@ function drawArena() {
   ctx.stroke();
 
 
-  /* Center line */
+  /* Center */
 
   ctx.beginPath();
 
@@ -1320,10 +1841,12 @@ function drawArena() {
     groundY + 5
   );
 
-  ctx.lineWidth = 3;
+
+  ctx.lineWidth =
+    3;
 
   ctx.strokeStyle =
-    "rgba(255,255,255,0.25)";
+    "rgba(255,255,255,.25)";
 
   ctx.stroke();
 
@@ -1331,11 +1854,12 @@ function drawArena() {
 
 
 /* =====================================================
-   STICKMAN
+   WALKING STICKMAN
 ===================================================== */
 
 function drawStickman(
-  player
+  player,
+  now
 ) {
 
   if (!player) {
@@ -1344,49 +1868,96 @@ function drawStickman(
 
 
   const x =
-    Number(player.x);
+    Number(
+      player.x
+    );
 
   const y =
-    Number(player.y);
+    Number(
+      player.y
+    );
 
 
   if (
     !Number.isFinite(x) ||
     !Number.isFinite(y)
   ) {
+
     return;
+
   }
 
 
   const facing =
-    Number(player.facing) < 0
+    Number(
+      player.facing
+    ) < 0
       ? -1
       : 1;
 
 
-  const hp =
-    Number(
-      player.hp ?? 100
+  const speed =
+    Math.abs(
+      Number(
+        player.vx || 0
+      )
     );
+
+
+  /*
+    THIS is the walking animation.
+
+    Faster movement = faster leg swing.
+  */
+
+  let walkPhase =
+    now * .01 *
+    Math.min(
+      1,
+      speed / 90
+    );
+
+
+  if (
+    player.onGround &&
+    speed > 20
+  ) {
+
+    walkPhase =
+      now *
+      .018;
+
+  }
+
+
+  const swing =
+    player.onGround &&
+    speed > 20
+      ? Math.sin(
+          walkPhase
+        ) * .75
+      : 0;
+
+
+  const bob =
+    player.onGround &&
+    speed > 20
+      ? Math.abs(
+          Math.sin(
+            walkPhase
+          )
+        ) * 2
+      : 0;
 
 
   ctx.save();
 
 
-  /*
-    IMPORTANT:
-
-    player.x = feet X
-    player.y = feet Y
-
-    Everything else is drawn upward
-    from that position.
-  */
-
   ctx.translate(
     x,
-    y
+    y - bob
   );
+
 
   ctx.scale(
     facing,
@@ -1400,8 +1971,9 @@ function drawStickman(
 
   ctx.scale(
     1,
-    0.25
+    .25
   );
+
 
   ctx.beginPath();
 
@@ -1415,62 +1987,20 @@ function drawStickman(
     Math.PI * 2
   );
 
+
   ctx.fillStyle =
-    "rgba(0,0,0,0.35)";
+    "rgba(0,0,0,.35)";
 
   ctx.fill();
 
   ctx.restore();
 
 
-  /* Dash afterimage */
-
-  if (
-    Number(player.dashTimer || 0) > 0
-  ) {
-
-    for (
-      let i = 1;
-      i <= 4;
-      i++
-    ) {
-
-      ctx.globalAlpha =
-        0.12 *
-        (5 - i);
-
-      ctx.strokeStyle =
-        "#77ddff";
-
-      ctx.lineWidth = 7;
-
-
-      ctx.beginPath();
-
-      ctx.moveTo(
-        -30 - i * 16,
-        -55
-      );
-
-      ctx.lineTo(
-        -80 - i * 20,
-        -55
-      );
-
-      ctx.stroke();
-
-    }
-
-    ctx.globalAlpha =
-      1;
-
-  }
-
-
   const bodyColor =
     player.role === "P1"
       ? "#65a8ff"
       : "#ff657c";
+
 
   const glowColor =
     player.role === "P1"
@@ -1485,14 +2015,67 @@ function drawStickman(
     "round";
 
 
+  /* Dash effect */
+
+  if (
+    Number(
+      player.dashTimer ||
+      0
+    ) > 0
+  ) {
+
+    for (
+      let i = 1;
+      i <= 4;
+      i++
+    ) {
+
+      ctx.globalAlpha =
+        .12 *
+        (5 - i);
+
+
+      ctx.strokeStyle =
+        "#77ddff";
+
+
+      ctx.lineWidth =
+        7;
+
+
+      ctx.beginPath();
+
+      ctx.moveTo(
+        -30 -
+          i *
+          16,
+        -55
+      );
+
+      ctx.lineTo(
+        -80 -
+          i *
+          20,
+        -55
+      );
+
+      ctx.stroke();
+
+    }
+
+
+    ctx.globalAlpha =
+      1;
+
+  }
+
+
   ctx.strokeStyle =
     bodyColor;
 
   ctx.fillStyle =
     bodyColor;
 
-
-  /* Glow */
 
   ctx.shadowBlur =
     14;
@@ -1501,7 +2084,7 @@ function drawStickman(
     glowColor;
 
 
-  /* HEAD */
+  /* Head */
 
   ctx.beginPath();
 
@@ -1524,7 +2107,8 @@ function drawStickman(
   ctx.strokeStyle =
     "#080a12";
 
-  ctx.lineWidth = 4;
+  ctx.lineWidth =
+    4;
 
   ctx.beginPath();
 
@@ -1541,12 +2125,13 @@ function drawStickman(
   ctx.stroke();
 
 
-  /* BODY */
+  /* Body */
 
   ctx.strokeStyle =
     bodyColor;
 
-  ctx.lineWidth = 9;
+  ctx.lineWidth =
+    9;
 
   ctx.beginPath();
 
@@ -1563,65 +2148,137 @@ function drawStickman(
   ctx.stroke();
 
 
-  /* LEFT LEG */
+  /* ================= LEGS ================= */
 
-  ctx.lineWidth = 8;
+  if (
+    player.onGround &&
+    speed > 20 &&
+    !player.blocking &&
+    !player.attackTimer
+  ) {
 
-  ctx.beginPath();
+    /*
+      Animated running legs.
+    */
 
-  ctx.moveTo(
-    0,
-    -28
-  );
-
-  ctx.lineTo(
-    -20,
-    0
-  );
-
-  ctx.lineTo(
-    -30,
-    0
-  );
-
-  ctx.stroke();
+    const legLength =
+      31;
 
 
-  /* RIGHT LEG */
+    ctx.lineWidth =
+      8;
 
-  ctx.beginPath();
 
-  ctx.moveTo(
-    0,
-    -28
-  );
+    ctx.beginPath();
 
-  ctx.lineTo(
-    20,
-    0
-  );
+    ctx.moveTo(
+      0,
+      -28
+    );
 
-  ctx.lineTo(
-    32,
-    0
-  );
+    ctx.lineTo(
+      Math.sin(
+        walkPhase
+      ) *
+        legLength,
 
-  ctx.stroke();
+      Math.cos(
+        walkPhase
+      ) *
+        6
+    );
 
+    ctx.stroke();
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      0,
+      -28
+    );
+
+    ctx.lineTo(
+      -Math.sin(
+        walkPhase
+      ) *
+        legLength,
+
+      -Math.cos(
+        walkPhase
+      ) *
+        6
+    );
+
+    ctx.stroke();
+
+
+  } else {
+
+    /* Standing legs */
+
+    ctx.lineWidth =
+      8;
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      0,
+      -28
+    );
+
+    ctx.lineTo(
+      -20,
+      0
+    );
+
+    ctx.lineTo(
+      -30,
+      0
+    );
+
+    ctx.stroke();
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      0,
+      -28
+    );
+
+    ctx.lineTo(
+      20,
+      0
+    );
+
+    ctx.lineTo(
+      32,
+      0
+    );
+
+    ctx.stroke();
+
+  }
+
+
+  /* ================= ARMS ================= */
 
   const attacking =
     Number(
-      player.attackTimer || 0
+      player.attackTimer ||
+      0
     ) > 0;
 
-
-  /* ARMS */
 
   if (
     attacking
   ) {
 
-    ctx.lineWidth = 9;
+    ctx.lineWidth =
+      9;
+
 
     ctx.beginPath();
 
@@ -1631,12 +2288,12 @@ function drawStickman(
     );
 
     ctx.lineTo(
-      30,
+      32,
       -52
     );
 
     ctx.lineTo(
-      68,
+      70,
       -55
     );
 
@@ -1646,7 +2303,7 @@ function drawStickman(
     ctx.beginPath();
 
     ctx.arc(
-      73,
+      74,
       -55,
       9,
       0,
@@ -1662,7 +2319,9 @@ function drawStickman(
     player.blocking
   ) {
 
-    ctx.lineWidth = 8;
+    ctx.lineWidth =
+      8;
+
 
     ctx.beginPath();
 
@@ -1697,12 +2356,12 @@ function drawStickman(
     ctx.fill();
 
 
-    /* Shield */
-
     ctx.strokeStyle =
-      "rgba(130,220,255,0.9)";
+      "rgba(130,220,255,.9)";
 
-    ctx.lineWidth = 5;
+    ctx.lineWidth =
+      5;
+
 
     ctx.beginPath();
 
@@ -1719,9 +2378,76 @@ function drawStickman(
   }
 
 
+  else if (
+    player.onGround &&
+    speed > 20
+  ) {
+
+    /* Running arms */
+
+    ctx.lineWidth =
+      8;
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      0,
+      -62
+    );
+
+    ctx.lineTo(
+      -25 +
+        Math.sin(
+          walkPhase +
+          Math.PI
+        ) *
+        20,
+
+      -48 +
+        Math.cos(
+          walkPhase
+        ) *
+        8
+    );
+
+    ctx.stroke();
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      0,
+      -62
+    );
+
+    ctx.lineTo(
+      25 +
+        Math.sin(
+          walkPhase
+        ) *
+        20,
+
+      -48 +
+        Math.cos(
+          walkPhase +
+          Math.PI
+        ) *
+        8
+    );
+
+    ctx.stroke();
+
+  }
+
+
   else {
 
-    ctx.lineWidth = 8;
+    /* Standing arms */
+
+    ctx.lineWidth =
+      8;
+
 
     ctx.beginPath();
 
@@ -1765,11 +2491,13 @@ function drawStickman(
   }
 
 
+  /* Label */
+
   ctx.shadowBlur =
     0;
 
-
-  /* PLAYER LABEL */
+  ctx.fillStyle =
+    "#fff";
 
   ctx.font =
     "bold 16px Arial";
@@ -1777,49 +2505,48 @@ function drawStickman(
   ctx.textAlign =
     "center";
 
-  ctx.fillStyle =
-    "#ffffff";
 
   ctx.fillText(
-    player.role,
+    player.bot
+      ? "CPU"
+      : player.role,
     0,
     -128
   );
 
 
-  /* MINI HP BAR */
+  /* Mini HP */
 
   const barWidth =
     70;
 
-  const barHeight =
-    7;
-
 
   ctx.fillStyle =
-    "rgba(0,0,0,0.5)";
+    "rgba(0,0,0,.5)";
+
 
   ctx.fillRect(
-    -barWidth / 2,
+    -35,
     -115,
     barWidth,
-    barHeight
+    7
   );
 
 
   ctx.fillStyle =
     bodyColor;
 
+
   ctx.fillRect(
-    -barWidth / 2,
+    -35,
     -115,
     barWidth *
       Math.max(
         0,
-        hp
+        player.hp
       ) /
       100,
-    barHeight
+    7
   );
 
 
@@ -1833,44 +2560,30 @@ function drawStickman(
 ===================================================== */
 
 function drawProjectile(
-  projectile
+  p
 ) {
 
-  if (!projectile) {
+  if (!p) {
     return;
   }
 
 
-  const x =
-    Number(projectile.x);
-
-  const y =
-    Number(projectile.y);
-
-
   if (
-    !Number.isFinite(x) ||
-    !Number.isFinite(y)
+    p.kind ===
+    "wind"
   ) {
-    return;
-  }
 
+    const direction =
+      p.vx < 0
+        ? -1
+        : 1;
 
-  const direction =
-    Number(projectile.vx) < 0
-      ? -1
-      : 1;
-
-
-  if (
-    projectile.kind === "wind"
-  ) {
 
     ctx.save();
 
     ctx.translate(
-      x,
-      y
+      p.x,
+      p.y
     );
 
     ctx.scale(
@@ -1878,16 +2591,19 @@ function drawProjectile(
       1
     );
 
+
     ctx.shadowBlur =
       25;
 
     ctx.shadowColor =
-      "#8ff";
+      "#bfffff";
+
 
     ctx.strokeStyle =
-      "#b8ffff";
+      "#cfffff";
 
-    ctx.lineWidth = 7;
+    ctx.lineWidth =
+      7;
 
 
     ctx.beginPath();
@@ -1896,512 +2612,159 @@ function drawProjectile(
       0,
       0,
       35,
-      -0.9,
-      0.9
+      -.9,
+      .9
     );
 
     ctx.stroke();
 
 
-    ctx.shadowBlur =
-      0;
-
     ctx.restore();
 
-    return;
   }
-
-
-  ctx.beginPath();
-
-  ctx.arc(
-    x,
-    y,
-    10,
-    0,
-    Math.PI * 2
-  );
-
-  ctx.fillStyle =
-    "#ffffff";
-
-  ctx.fill();
 
 }
 
 
 /* =====================================================
-   EFFECTS
+   WORLD TRANSFORM
 ===================================================== */
 
-function processEvents(
-  events
-) {
+function resizeCanvas() {
 
-  for (
-    const event of events
-  ) {
+  const rect =
+    canvas.getBoundingClientRect();
 
-    spawnEffect(
-      event
+
+  const width =
+    Math.max(
+      1,
+      rect.width
     );
 
-  }
+
+  const height =
+    Math.max(
+      1,
+      rect.height
+    );
+
+
+  const dpr =
+    Math.min(
+      window.devicePixelRatio ||
+        1,
+      2
+    );
+
+
+  canvas.width =
+    Math.floor(
+      width *
+      dpr
+    );
+
+
+  canvas.height =
+    Math.floor(
+      height *
+      dpr
+    );
+
+
+  ctx.setTransform(
+    dpr,
+    0,
+    0,
+    dpr,
+    0,
+    0
+  );
 
 }
 
 
-function spawnEffect(
-  event
-) {
+function resizeIfNeeded() {
 
-  if (!event) {
-    return;
-  }
+  const width =
+    canvas.clientWidth;
 
-
-  const effect = {
-
-    type:
-      event.type,
-
-    x:
-      Number(
-        event.x || 0
-      ),
-
-    y:
-      Number(
-        event.y || 0
-      ),
-
-    direction:
-      Number(
-        event.direction || 1
-      ),
-
-    life: 0.45,
-
-    maxLife: 0.45,
-
-    particles: []
-
-  };
+  const height =
+    canvas.clientHeight;
 
 
   if (
-    event.type === "hit"
+    width !==
+      previousCanvasWidth ||
+    height !==
+      previousCanvasHeight
   ) {
 
-    effect.life =
-      0.3;
+    previousCanvasWidth =
+      width;
 
-    effect.maxLife =
-      0.3;
-
-
-    for (
-      let i = 0;
-      i < 12;
-      i++
-    ) {
-
-      const angle =
-        Math.random() *
-        Math.PI *
-        2;
-
-      const speed =
-        50 +
-        Math.random() *
-        180;
+    previousCanvasHeight =
+      height;
 
 
-      effect.particles.push({
-        x: 0,
-        y: 0,
-        vx:
-          Math.cos(angle) *
-          speed,
-        vy:
-          Math.sin(angle) *
-          speed
-      });
-
-    }
-
-  }
-
-
-  visuals.push(
-    effect
-  );
-
-}
-
-
-function updateVisuals(
-  dt
-) {
-
-  for (
-    let i =
-      visuals.length - 1;
-    i >= 0;
-    i--
-  ) {
-
-    const effect =
-      visuals[i];
-
-    effect.life -=
-      dt;
-
-
-    if (
-      effect.type === "hit"
-    ) {
-
-      for (
-        const p
-        of effect.particles
-      ) {
-
-        p.x +=
-          p.vx * dt;
-
-        p.y +=
-          p.vy * dt;
-
-      }
-
-    }
-
-
-    if (
-      effect.life <= 0
-    ) {
-
-      visuals.splice(
-        i,
-        1
-      );
-
-    }
+    resizeCanvas();
 
   }
 
 }
 
 
-function drawVisuals() {
+function setupWorldTransform() {
 
-  for (
-    const effect
-    of visuals
-  ) {
+  const width =
+    canvas.clientWidth;
 
-    const progress =
-      1 -
-      effect.life /
-      effect.maxLife;
+  const height =
+    canvas.clientHeight;
 
-    const alpha =
-      Math.max(
-        0,
-        1 - progress
-      );
 
+  const scale =
+    Math.min(
+      width /
+        WORLD_W,
 
-    ctx.save();
+      height /
+        WORLD_H
+    );
 
-    ctx.globalAlpha =
-      alpha;
 
+  const offsetX =
+    (
+      width -
+      WORLD_W *
+        scale
+    ) /
+    2;
 
-    /* FIRE */
 
-    if (
-      effect.type === "fire"
-    ) {
+  const offsetY =
+    (
+      height -
+      WORLD_H *
+        scale
+    ) /
+    2;
 
-      ctx.translate(
-        effect.x,
-        effect.y
-      );
 
-
-      const radius =
-        25 +
-        progress * 50;
-
-
-      const gradient =
-        ctx.createRadialGradient(
-          0,
-          0,
-          5,
-          0,
-          0,
-          radius
-        );
-
-
-      gradient.addColorStop(
-        0,
-        "#ffffff"
-      );
-
-      gradient.addColorStop(
-        0.25,
-        "#ffd85c"
-      );
-
-      gradient.addColorStop(
-        0.65,
-        "#ff6a2a"
-      );
-
-      gradient.addColorStop(
-        1,
-        "rgba(255,40,0,0)"
-      );
-
-
-      ctx.fillStyle =
-        gradient;
-
-
-      ctx.beginPath();
-
-      ctx.arc(
-        0,
-        0,
-        radius,
-        0,
-        Math.PI * 2
-      );
-
-      ctx.fill();
-
-    }
-
-
-    /* DASH */
-
-    else if (
-      effect.type === "dash"
-    ) {
-
-      ctx.translate(
-        effect.x,
-        effect.y
-      );
-
-      ctx.strokeStyle =
-        "#7de9ff";
-
-      ctx.lineWidth = 8;
-
-
-      for (
-        let i = 0;
-        i < 7;
-        i++
-      ) {
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-          -effect.direction *
-            i *
-            20,
-
-          -25 +
-            i * 8
-        );
-
-        ctx.lineTo(
-          -effect.direction *
-            (100 + i * 15),
-
-          -25 +
-            i * 8
-        );
-
-        ctx.stroke();
-
-      }
-
-    }
-
-
-    /* WIND */
-
-    else if (
-      effect.type === "wind"
-    ) {
-
-      ctx.translate(
-        effect.x,
-        effect.y
-      );
-
-      ctx.scale(
-        effect.direction,
-        1
-      );
-
-      ctx.strokeStyle =
-        "#bfffff";
-
-      ctx.lineWidth = 8;
-
-
-      ctx.beginPath();
-
-      ctx.arc(
-        0,
-        0,
-        35 +
-          progress * 60,
-        -1,
-        1
-      );
-
-      ctx.stroke();
-
-    }
-
-
-    /* HIT */
-
-    else if (
-      effect.type === "hit"
-    ) {
-
-      ctx.translate(
-        effect.x,
-        effect.y
-      );
-
-      ctx.strokeStyle =
-        "#ffffff";
-
-      ctx.lineWidth = 4;
-
-
-      for (
-        const p
-        of effect.particles
-      ) {
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-          p.x,
-          p.y
-        );
-
-        ctx.lineTo(
-          p.x -
-            p.vx *
-            0.035,
-
-          p.y -
-            p.vy *
-            0.035
-        );
-
-        ctx.stroke();
-
-      }
-
-
-      ctx.beginPath();
-
-      ctx.arc(
-        0,
-        0,
-        15 +
-          progress * 45,
-        0,
-        Math.PI * 2
-      );
-
-      ctx.stroke();
-
-    }
-
-
-    ctx.restore();
-
-  }
-
-}
-
-
-/* =====================================================
-   FALLBACK CHARACTERS
-===================================================== */
-
-function drawFallbackCharacters() {
-
-  const p1 = {
-
-    role: "P1",
-
-    x: 300,
-
-    y: 510,
-
-    hp: 100,
-
-    facing: 1,
-
-    blocking: false,
-
-    attackTimer: 0,
-
-    dashTimer: 0
-
-  };
-
-
-  const p2 = {
-
-    role: "P2",
-
-    x: 900,
-
-    y: 510,
-
-    hp: 100,
-
-    facing: -1,
-
-    blocking: false,
-
-    attackTimer: 0,
-
-    dashTimer: 0
-
-  };
-
-
-  drawStickman(
-    p1
-  );
-
-  drawStickman(
-    p2
+  ctx.setTransform(
+    scale,
+    0,
+    0,
+    scale,
+    offsetX,
+    offsetY
   );
 
 }
 
 
 /* =====================================================
-   RENDER LOOP
+   RENDER
 ===================================================== */
 
 function render(
@@ -2410,10 +2773,14 @@ function render(
 
   const dt =
     Math.min(
-      0.05,
-      (now - lastFrame) /
+      .05,
+      (
+        now -
+        lastFrame
+      ) /
         1000
     );
+
 
   lastFrame =
     now;
@@ -2421,8 +2788,6 @@ function render(
 
   resizeIfNeeded();
 
-
-  /* Clear */
 
   ctx.setTransform(
     1,
@@ -2445,38 +2810,65 @@ function render(
   setupWorldTransform();
 
 
-  /* Arena */
-
   drawArena();
 
 
   /*
-    ALWAYS draw characters.
-
-    Before the server sends state:
-    fallback characters appear.
-
-    After state arrives:
-    real characters appear.
+    Before server state exists,
+    show two characters.
   */
 
   if (
     !state ||
-    !state.players ||
-    !state.players.P1 ||
-    !state.players.P2
+    !state.players
   ) {
 
-    drawFallbackCharacters();
+    drawStickman(
+      {
+        role: "P1",
+        x: 300,
+        y: 510,
+        hp: 100,
+        facing: 1,
+        vx: 0,
+        onGround: true,
+        blocking: false,
+        attackTimer: 0,
+        dashTimer: 0,
+        bot: false
+      },
+      now
+    );
+
+
+    drawStickman(
+      {
+        role: "P2",
+        x: 900,
+        y: 510,
+        hp: 100,
+        facing: -1,
+        vx: 0,
+        onGround: true,
+        blocking: false,
+        attackTimer: 0,
+        dashTimer: 0,
+        bot: false
+      },
+      now
+    );
 
   } else {
 
     drawStickman(
-      state.players.P1
+      state.players.P1,
+      now
     );
 
+
     drawStickman(
-      state.players.P2
+      state.players.P2,
+      now
     );
 
 
@@ -2505,35 +2897,6 @@ function render(
   requestAnimationFrame(
     render
   );
-
-}
-
-
-function resizeIfNeeded() {
-
-  const width =
-    canvas.clientWidth;
-
-  const height =
-    canvas.clientHeight;
-
-
-  if (
-    width !==
-      previousCanvasWidth ||
-    height !==
-      previousCanvasHeight
-  ) {
-
-    previousCanvasWidth =
-      width;
-
-    previousCanvasHeight =
-      height;
-
-    resizeCanvas();
-
-  }
 
 }
 
