@@ -1,76 +1,232 @@
-const canvas = document.getElementById("arena");
-const ctx = canvas.getContext("2d");
+const canvas =
+  document.getElementById("arena");
 
-const lobby = document.getElementById("lobby");
-const game = document.getElementById("game");
+const ctx =
+  canvas.getContext("2d");
 
-const createButton = document.getElementById("createRoom");
-const joinButton = document.getElementById("joinRoom");
-const showJoin = document.getElementById("showJoin");
+const lobby =
+  document.getElementById("lobby");
 
-const joinPanel = document.getElementById("joinPanel");
-const roomInput = document.getElementById("roomInput");
+const game =
+  document.getElementById("game");
 
-const lobbyStatus = document.getElementById("lobbyStatus");
-const roomInfo = document.getElementById("roomInfo");
-const connection = document.getElementById("connection");
+const connectionStatus =
+  document.getElementById(
+    "connectionStatus"
+  );
 
-const hp1 = document.getElementById("hp1");
-const hp2 = document.getElementById("hp2");
+const createRoomButton =
+  document.getElementById(
+    "createRoom"
+  );
 
-const timerElement = document.getElementById("timer");
-const roomCodeDisplay = document.getElementById("roomCodeDisplay");
-const gameMessage = document.getElementById("gameMessage");
+const showJoinButton =
+  document.getElementById(
+    "showJoin"
+  );
 
-const fireCD = document.getElementById("fireCD");
-const dashCD = document.getElementById("dashCD");
-const windCD = document.getElementById("windCD");
+const joinPanel =
+  document.getElementById(
+    "joinPanel"
+  );
+
+const joinRoomButton =
+  document.getElementById(
+    "joinRoom"
+  );
+
+const roomInput =
+  document.getElementById(
+    "roomInput"
+  );
+
+const roomInfo =
+  document.getElementById(
+    "roomInfo"
+  );
+
+const lobbyStatus =
+  document.getElementById(
+    "lobbyStatus"
+  );
+
+const roomCodeDisplay =
+  document.getElementById(
+    "roomCodeDisplay"
+  );
+
+const hp1 =
+  document.getElementById("hp1");
+
+const hp2 =
+  document.getElementById("hp2");
+
+const timer =
+  document.getElementById("timer");
+
+const fireCD =
+  document.getElementById(
+    "fireCD"
+  );
+
+const dashCD =
+  document.getElementById(
+    "dashCD"
+  );
+
+const windCD =
+  document.getElementById(
+    "windCD"
+  );
+
+const gameOverlay =
+  document.getElementById(
+    "gameOverlay"
+  );
+
+const winnerText =
+  document.getElementById(
+    "winnerText"
+  );
+
+const roundText =
+  document.getElementById(
+    "roundText"
+  );
+
+const rematchButton =
+  document.getElementById(
+    "rematchButton"
+  );
+
+const backButton =
+  document.getElementById(
+    "backButton"
+  );
+
+const controlText =
+  document.getElementById(
+    "controlText"
+  );
+
+
+/* WORLD */
+
+const WORLD_WIDTH = 1200;
+const WORLD_HEIGHT = 600;
+
+const GROUND = 500;
+
+
+/* NETWORK */
 
 let socket = null;
+
 let myPlayer = 0;
+
 let roomCode = "";
 
-let worldWidth = 1000;
-let worldHeight = 560;
+let connected = false;
+
+
+/* GAME */
+
+let running = false;
+
+let currentTime = 90;
 
 let players = {
-  1: {
-    x: 220,
-    y: 430,
-    vx: 0,
-    vy: 0,
-    hp: 100,
-    facing: 1,
-    action: "idle",
-    block: false
-  },
-
-  2: {
-    x: 780,
-    y: 430,
-    vx: 0,
-    vy: 0,
-    hp: 100,
-    facing: -1,
-    action: "idle",
-    block: false
-  }
+  1: makePlayer(1),
+  2: makePlayer(2)
 };
 
-let keys = {};
+let projectiles = [];
 
-let cooldowns = {
+let effects = [];
+
+let localEffects = [];
+
+let lastServerUpdate = performance.now();
+
+let lastInputSent = 0;
+
+
+/* INPUT */
+
+const keys = {};
+
+const input = {
+  left: false,
+  right: false,
+  jump: false,
+  block: false
+};
+
+
+/* COOLDOWNS */
+
+const cooldowns = {
   fire: 0,
   dash: 0,
   wind: 0
 };
 
-let effects = [];
 
-let gameRunning = false;
-let gameTime = 60;
+/* ANIMATION */
 
-let lastTime = performance.now();
+let animationTime = 0;
+
+
+/* PLAYER TEMPLATE */
+
+function makePlayer(id) {
+  return {
+    id,
+
+    connected: false,
+
+    x:
+      id === 1
+        ? 250
+        : 950,
+
+    y: GROUND,
+
+    vx: 0,
+    vy: 0,
+
+    facing:
+      id === 1
+        ? 1
+        : -1,
+
+    hp: 100,
+    maxHp: 100,
+
+    grounded: true,
+
+    state: "idle",
+
+    block: false,
+
+    attackTimer: 0,
+
+    hitStun: 0,
+
+    dashTimer: 0,
+
+    invulnerable: 0,
+
+    cooldowns: {
+      fire: 0,
+      dash: 0,
+      wind: 0
+    }
+  };
+}
+
+
+/* CONNECT */
 
 function connect() {
   const protocol =
@@ -78,442 +234,293 @@ function connect() {
       ? "wss:"
       : "ws:";
 
-  socket = new WebSocket(
-    `${protocol}//${location.host}`
-  );
+  const address =
+    `${protocol}//${location.host}`;
 
-  connection.textContent = "CONNECTING...";
+  socket =
+    new WebSocket(address);
 
   socket.onopen = () => {
-    connection.textContent = "ONLINE";
+    connected = true;
+
+    connectionStatus.textContent =
+      "ONLINE";
   };
 
   socket.onclose = () => {
-    connection.textContent = "OFFLINE";
+    connected = false;
+
+    connectionStatus.textContent =
+      "OFFLINE";
+
     lobbyStatus.textContent =
       "Connection lost. Refresh the page.";
   };
 
   socket.onerror = () => {
-    connection.textContent = "ERROR";
+    connectionStatus.textContent =
+      "ERROR";
   };
 
   socket.onmessage = event => {
-    const msg = JSON.parse(event.data);
-
-    if (msg.type === "roomCreated") {
-      myPlayer = msg.player;
-      roomCode = msg.code;
-
-      roomInfo.textContent = roomCode;
-
-      lobbyStatus.textContent =
-        "Waiting for Player 2...";
-
-      roomCodeDisplay.textContent =
-        `ROOM ${roomCode}`;
-    }
-
-    if (msg.type === "joined") {
-      myPlayer = msg.player;
-      roomCode = msg.code;
-
-      roomInfo.textContent = roomCode;
-
-      lobbyStatus.textContent =
-        "Joined room.";
-
-      roomCodeDisplay.textContent =
-        `ROOM ${roomCode}`;
-    }
-
-    if (msg.type === "error") {
-      lobbyStatus.textContent = msg.message;
-    }
-
-    if (msg.type === "gameStart") {
-      for (const p of msg.players) {
-        players[p.id] = {
-          ...players[p.id],
-          ...p
-        };
-      }
-
-      startGame();
-    }
-
-    if (msg.type === "playerState") {
-      const p = msg.player;
-
-      if (p.id !== myPlayer) {
-        players[p.id] = {
-          ...players[p.id],
-          ...p
-        };
-      }
-    }
-
-    if (msg.type === "damage") {
-      players[msg.target].hp = msg.hp;
-
-      effects.push({
-        type: "hit",
-        x: players[msg.target].x,
-        y: players[msg.target].y - 60,
-        text: `-${msg.damage}`,
-        life: .7
-      });
-    }
-
-    if (msg.type === "abilityHit") {
-      players[msg.target].hp = msg.hp;
-
-      effects.push({
-        type: msg.ability,
-        x: players[msg.target].x,
-        y: players[msg.target].y - 30,
-        life: 1
-      });
-    }
-
-    if (msg.type === "abilityMiss") {
-      effects.push({
-        type: msg.ability,
-        x: players[msg.attacker].x,
-        y: players[msg.attacker].y - 30,
-        life: .6
-      });
-    }
-
-    if (msg.type === "gameOver") {
-      endGame(msg.winner);
-    }
-
-    if (msg.type === "playerLeft") {
-      endGame(myPlayer);
-      gameMessage.textContent =
-        "OPPONENT LEFT";
+    try {
+      handleMessage(
+        JSON.parse(event.data)
+      );
+    } catch {
+      console.error(
+        "Invalid server message"
+      );
     }
   };
 }
 
-function startGame() {
-  lobby.hidden = true;
-  game.hidden = false;
-
-  gameRunning = true;
-  gameTime = 60;
-
-  resizeCanvas();
-}
-
-function send(data) {
+function send(message) {
   if (
     socket &&
-    socket.readyState === WebSocket.OPEN
+    socket.readyState ===
+      WebSocket.OPEN
   ) {
-    socket.send(JSON.stringify(data));
+    socket.send(
+      JSON.stringify(message)
+    );
   }
 }
 
-function createRoom() {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
-    lobbyStatus.textContent =
-      "Connecting to server...";
+
+/* SERVER MESSAGES */
+
+function handleMessage(message) {
+
+  if (
+    message.type ===
+    "connected"
+  ) {
     return;
   }
 
-  send({
-    type: "create"
-  });
-}
 
-function joinRoom() {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
+  if (
+    message.type ===
+    "roomCreated"
+  ) {
+    myPlayer =
+      message.player;
+
+    roomCode =
+      message.code;
+
+    roomInfo.textContent =
+      roomCode;
+
+    roomCodeDisplay.textContent =
+      `ROOM ${roomCode}`;
+
     lobbyStatus.textContent =
-      "Connecting to server...";
-    return;
+      "Waiting for Player 2...";
   }
 
-  const code =
-    roomInput.value.trim().toUpperCase();
 
-  if (code.length !== 6) {
+  if (
+    message.type ===
+    "joined"
+  ) {
+    myPlayer =
+      message.player;
+
+    roomCode =
+      message.code;
+
+    roomInfo.textContent =
+      roomCode;
+
+    roomCodeDisplay.textContent =
+      `ROOM ${roomCode}`;
+
     lobbyStatus.textContent =
-      "Enter a 6-character room code.";
-    return;
+      "Joined room. Waiting for game...";
   }
 
-  send({
-    type: "join",
-    code
-  });
-}
 
-createButton.addEventListener(
-  "click",
-  createRoom
-);
-
-showJoin.addEventListener(
-  "click",
-  () => {
-    joinPanel.hidden = false;
-    roomInput.focus();
-  }
-);
-
-joinButton.addEventListener(
-  "click",
-  joinRoom
-);
-
-roomInput.addEventListener(
-  "keydown",
-  e => {
-    if (e.key === "Enter") {
-      joinRoom();
-    }
-  }
-);
-
-function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
-
-  canvas.width =
-    Math.max(1, Math.floor(rect.width * devicePixelRatio));
-
-  canvas.height =
-    Math.max(1, Math.floor(rect.height * devicePixelRatio));
-
-  ctx.setTransform(
-    devicePixelRatio,
-    0,
-    0,
-    devicePixelRatio,
-    0,
-    0
-  );
-}
-
-window.addEventListener(
-  "resize",
-  resizeCanvas
-);
-
-window.addEventListener(
-  "keydown",
-  e => {
-    keys[e.code] = true;
-
+  if (
+    message.type ===
+    "roomState"
+  ) {
     if (
-      ["ArrowLeft", "ArrowRight", "ArrowUp", "Space"]
-        .includes(e.code)
+      message.started
     ) {
-      e.preventDefault();
+      startGame();
+    } else if (
+      !message.finished
+    ) {
+      lobbyStatus.textContent =
+        message.players.length === 1
+          ? "Waiting for Player 2..."
+          : "Ready!";
     }
-
-    handleKeyboardAbility(e.code);
-  }
-);
-
-window.addEventListener(
-  "keyup",
-  e => {
-    keys[e.code] = false;
-  }
-);
-
-function isPlayer1() {
-  return myPlayer === 1;
-}
-
-function controls() {
-  if (isPlayer1()) {
-    return {
-      left: "KeyA",
-      right: "KeyD",
-      jump: "KeyW",
-      attack: "KeyF",
-      block: "KeyG",
-      fire: "Digit1",
-      dash: "Digit2",
-      wind: "Digit3"
-    };
   }
 
-  return {
-    left: "ArrowLeft",
-    right: "ArrowRight",
-    jump: "ArrowUp",
-    attack: "KeyL",
-    block: "KeyK",
-    fire: "Digit8",
-    dash: "Digit9",
-    wind: "Digit0"
-  };
-}
 
-function handleKeyboardAbility(code) {
-  const c = controls();
-
-  if (code === c.attack) {
-    attack();
+  if (
+    message.type ===
+    "state"
+  ) {
+    applyState(message);
   }
 
-  if (code === c.fire) {
-    useAbility("fire");
-  }
 
-  if (code === c.dash) {
-    useAbility("dash");
-  }
-
-  if (code === c.wind) {
-    useAbility("wind");
-  }
-}
-
-function attack() {
-  if (!gameRunning) return;
-
-  const p = players[myPlayer];
-
-  p.action = "attack";
-
-  send({
-    type: "attack"
-  });
-
-  setTimeout(() => {
-    if (p) p.action = "idle";
-  }, 220);
-}
-
-function useAbility(name) {
-  if (!gameRunning) return;
-
-  if (cooldowns[name] > 0) return;
-
-  cooldowns[name] =
-    name === "fire"
-      ? 4
-      : name === "dash"
-      ? 6
-      : 5;
-
-  const p = players[myPlayer];
-
-  p.action = name;
-
-  if (name === "dash") {
-    p.x += p.facing * 140;
-
-    p.x = Math.max(
-      80,
-      Math.min(worldWidth - 80, p.x)
+  if (
+    message.type ===
+    "roundOver"
+  ) {
+    showRoundOver(
+      message.winner
     );
   }
 
-  send({
-    type: "ability",
-    ability: name
-  });
-
-  setTimeout(() => {
-    if (p) p.action = "idle";
-  }, 500);
-}
-
-function update(dt) {
-  if (!gameRunning) return;
-
-  const p = players[myPlayer];
-
-  const c = controls();
-
-  if (keys[c.left]) {
-    p.vx = -260;
-    p.facing = -1;
-  } else if (keys[c.right]) {
-    p.vx = 260;
-    p.facing = 1;
-  } else {
-    p.vx *= .78;
-  }
 
   if (
-    keys[c.jump] &&
-    p.y >= 429
+    message.type ===
+    "playerLeft"
   ) {
-    p.vy = -470;
+    running = false;
+
+    gameOverlay.hidden =
+      false;
+
+    winnerText.textContent =
+      "OPPONENT LEFT";
+
+    roundText.textContent =
+      "The other player disconnected.";
   }
 
-  p.vy += 1100 * dt;
 
-  p.x += p.vx * dt;
-  p.y += p.vy * dt;
-
-  if (p.y > 430) {
-    p.y = 430;
-    p.vy = 0;
+  if (
+    message.type ===
+    "rematchWaiting"
+  ) {
+    roundText.textContent =
+      `Player ${message.player} is ready.`;
   }
 
-  p.x = Math.max(
-    60,
-    Math.min(worldWidth - 60, p.x)
-  );
 
-  p.block = !!keys[c.block];
-
-  if (p.block) {
-    p.vx *= .7;
+  if (
+    message.type ===
+    "error"
+  ) {
+    lobbyStatus.textContent =
+      message.message;
   }
-
-  send({
-    type: "input",
-    x: p.x,
-    y: p.y,
-    vx: p.vx,
-    vy: p.vy,
-    facing: p.facing,
-    action: p.action,
-    block: p.block
-  });
-
-  for (const key in cooldowns) {
-    cooldowns[key] =
-      Math.max(0, cooldowns[key] - dt);
-  }
-
-  gameTime -= dt;
-
-  if (gameTime <= 0) {
-    gameTime = 0;
-
-    const winner =
-      players[1].hp >= players[2].hp
-        ? 1
-        : 2;
-
-    endGame(winner);
-  }
-
-  timerElement.textContent =
-    Math.ceil(gameTime);
-
-  updateCooldownUI();
-
-  for (const effect of effects) {
-    effect.life -= dt;
-    effect.y -= 20 * dt;
-  }
-
-  effects =
-    effects.filter(e => e.life > 0);
 }
 
-function updateCooldownUI() {
+
+/* APPLY STATE */
+
+function applyState(state) {
+
+  currentTime =
+    state.time;
+
+  timer.textContent =
+    Math.ceil(
+      currentTime
+    );
+
+  for (
+    const serverPlayer
+    of state.players
+  ) {
+    if (
+      !serverPlayer
+    ) continue;
+
+    players[
+      serverPlayer.id
+    ] = {
+      ...players[
+        serverPlayer.id
+      ],
+      ...serverPlayer
+    };
+  }
+
+  projectiles =
+    state.projectiles || [];
+
+  const serverEffects =
+    state.effects || [];
+
+  for (
+    const effect
+    of serverEffects
+  ) {
+    createEffect(
+      effect
+    );
+  }
+
+  updateHud();
+
+  if (
+    state.started &&
+    !running
+  ) {
+    startGame();
+  }
+}
+
+
+/* START */
+
+function startGame() {
+
+  lobby.hidden = true;
+
+  game.hidden = false;
+
+  gameOverlay.hidden =
+    true;
+
+  running = true;
+
+  resizeCanvas();
+
+  updateControlText();
+}
+
+
+/* HUD */
+
+function updateHud() {
+
+  hp1.style.width =
+    `${Math.max(
+      0,
+      players[1].hp
+    )}%`;
+
+  hp2.style.width =
+    `${Math.max(
+      0,
+      players[2].hp
+    )}%`;
+
+  cooldowns.fire =
+    players[
+      myPlayer
+    ]?.cooldowns?.fire || 0;
+
+  cooldowns.dash =
+    players[
+      myPlayer
+    ]?.cooldowns?.dash || 0;
+
+  cooldowns.wind =
+    players[
+      myPlayer
+    ]?.cooldowns?.wind || 0;
+
   fireCD.textContent =
     cooldowns.fire > 0
       ? `🔥 ${cooldowns.fire.toFixed(1)}`
@@ -530,97 +537,811 @@ function updateCooldownUI() {
       : "🌪 READY";
 }
 
-function worldToScreenX(x) {
-  return x / worldWidth *
+
+/* CONTROLS */
+
+function getControls() {
+
+  if (myPlayer === 1) {
+    return {
+      left: "KeyA",
+      right: "KeyD",
+      jump: "KeyW",
+
+      attack: "KeyF",
+      kick: "KeyR",
+      block: "KeyG",
+
+      fire: "Digit1",
+      dash: "Digit2",
+      wind: "Digit3"
+    };
+  }
+
+  return {
+    left: "ArrowLeft",
+    right: "ArrowRight",
+    jump: "ArrowUp",
+
+    attack: "KeyL",
+    kick: "KeyO",
+    block: "KeyK",
+
+    fire: "Digit8",
+    dash: "Digit9",
+    wind: "Digit0"
+  };
+}
+
+function updateControlText() {
+
+  if (myPlayer === 1) {
+    controlText.textContent =
+      "P1: A/D move • W jump • F punch • R kick • G block • 1/2/3 powers";
+  } else {
+    controlText.textContent =
+      "P2: ←/→ move • ↑ jump • L punch • O kick • K block • 8/9/0 powers";
+  }
+}
+
+
+/* KEYBOARD */
+
+window.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      !running ||
+      !myPlayer
+    ) {
+      return;
+    }
+
+    const c =
+      getControls();
+
+    keys[event.code] = true;
+
+    if (
+      [
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "Space"
+      ].includes(
+        event.code
+      )
+    ) {
+      event.preventDefault();
+    }
+
+    if (
+      event.repeat
+    ) {
+      return;
+    }
+
+    if (
+      event.code ===
+      c.attack
+    ) {
+      sendAction(
+        "attack"
+      );
+    }
+
+    if (
+      event.code ===
+      c.kick
+    ) {
+      sendAction(
+        "kick"
+      );
+    }
+
+    if (
+      event.code ===
+      c.fire
+    ) {
+      useAbility(
+        "fire"
+      );
+    }
+
+    if (
+      event.code ===
+      c.dash
+    ) {
+      useAbility(
+        "dash"
+      );
+    }
+
+    if (
+      event.code ===
+      c.wind
+    ) {
+      useAbility(
+        "wind"
+      );
+    }
+  }
+);
+
+window.addEventListener(
+  "keyup",
+  event => {
+    keys[event.code] =
+      false;
+  }
+);
+
+
+/* ACTION */
+
+function sendAction(action) {
+
+  if (!running) return;
+
+  send({
+    type: "action",
+    action
+  });
+
+  const p =
+    players[myPlayer];
+
+  if (p) {
+    p.state =
+      action;
+  }
+}
+
+
+/* ABILITIES */
+
+function useAbility(name) {
+
+  if (!running) return;
+
+  if (
+    cooldowns[name] > 0
+  ) {
+    return;
+  }
+
+  sendAction(name);
+
+  createEffect({
+    type: name,
+    x:
+      players[myPlayer].x +
+      players[myPlayer].facing * 60,
+    y:
+      players[myPlayer].y - 70
+  });
+}
+
+
+/* INPUT SYNC */
+
+function updateInput() {
+
+  if (!running) return;
+
+  const c =
+    getControls();
+
+  input.left =
+    !!keys[c.left];
+
+  input.right =
+    !!keys[c.right];
+
+  input.jump =
+    !!keys[c.jump];
+
+  input.block =
+    !!keys[c.block];
+
+  const now =
+    performance.now();
+
+  if (
+    now - lastInputSent <
+    35
+  ) {
+    return;
+  }
+
+  lastInputSent =
+    now;
+
+  send({
+    type: "input",
+    input
+  });
+}
+
+
+/* MOBILE CONTROLS */
+
+function setupMobileControls() {
+
+  document
+    .querySelectorAll(
+      "[data-control]"
+    )
+    .forEach(button => {
+
+      const control =
+        button.dataset.control;
+
+      const press =
+        event => {
+          event.preventDefault();
+
+          if (
+            control ===
+            "left"
+          ) {
+            input.left =
+              true;
+          }
+
+          if (
+            control ===
+            "right"
+          ) {
+            input.right =
+              true;
+          }
+
+          if (
+            control ===
+            "jump"
+          ) {
+            input.jump =
+              true;
+          }
+
+          if (
+            control ===
+            "block"
+          ) {
+            input.block =
+              true;
+          }
+
+          send({
+            type: "input",
+            input
+          });
+        };
+
+      const release =
+        event => {
+          event.preventDefault();
+
+          if (
+            control ===
+            "left"
+          ) {
+            input.left =
+              false;
+          }
+
+          if (
+            control ===
+            "right"
+          ) {
+            input.right =
+              false;
+          }
+
+          if (
+            control ===
+            "jump"
+          ) {
+            input.jump =
+              false;
+          }
+
+          if (
+            control ===
+            "block"
+          ) {
+            input.block =
+              false;
+          }
+
+          send({
+            type: "input",
+            input
+          });
+        };
+
+      button.addEventListener(
+        "pointerdown",
+        press
+      );
+
+      button.addEventListener(
+        "pointerup",
+        release
+      );
+
+      button.addEventListener(
+        "pointercancel",
+        release
+      );
+
+      button.addEventListener(
+        "pointerleave",
+        release
+      );
+    });
+
+
+  document
+    .querySelectorAll(
+      "[data-action]"
+    )
+    .forEach(button => {
+
+      button.addEventListener(
+        "pointerdown",
+        event => {
+          event.preventDefault();
+
+          sendAction(
+            button.dataset.action
+          );
+        }
+      );
+    });
+
+
+  document
+    .querySelectorAll(
+      "[data-ability]"
+    )
+    .forEach(button => {
+
+      button.addEventListener(
+        "pointerdown",
+        event => {
+          event.preventDefault();
+
+          useAbility(
+            button.dataset.ability
+          );
+        }
+      );
+    });
+}
+
+setupMobileControls();
+
+
+/* EFFECTS */
+
+function createEffect(effect) {
+
+  effects.push({
+    ...effect,
+
+    life:
+      effect.life ||
+      .7,
+
+    maxLife:
+      effect.life ||
+      .7,
+
+    particles:
+      []
+  });
+
+  if (
+    effect.type ===
+    "hit"
+  ) {
+
+    for (let i = 0; i < 8; i++) {
+
+      effects[
+        effects.length - 1
+      ].particles.push({
+        x: effect.x,
+        y: effect.y,
+
+        vx:
+          (Math.random() - .5) *
+          260,
+
+        vy:
+          (Math.random() - .7) *
+          300
+      });
+    }
+  }
+}
+
+
+/* CANVAS */
+
+function resizeCanvas() {
+
+  const rect =
+    canvas.getBoundingClientRect();
+
+  const dpr =
+    Math.min(
+      2,
+      window.devicePixelRatio || 1
+    );
+
+  canvas.width =
+    Math.max(
+      1,
+      Math.floor(
+        rect.width * dpr
+      )
+    );
+
+  canvas.height =
+    Math.max(
+      1,
+      Math.floor(
+        rect.height * dpr
+      )
+    );
+}
+
+window.addEventListener(
+  "resize",
+  resizeCanvas
+);
+
+
+/* SCREEN TRANSFORM */
+
+function beginWorld() {
+
+  const width =
     canvas.clientWidth;
-}
 
-function worldToScreenY(y) {
-  return y / worldHeight *
+  const height =
     canvas.clientHeight;
+
+  const scale =
+    Math.min(
+      width / WORLD_WIDTH,
+      height / WORLD_HEIGHT
+    );
+
+  const offsetX =
+    (width -
+      WORLD_WIDTH * scale) /
+    2;
+
+  const offsetY =
+    (height -
+      WORLD_HEIGHT * scale) /
+    2;
+
+  const dpr =
+    Math.min(
+      2,
+      window.devicePixelRatio || 1
+    );
+
+  ctx.setTransform(
+    dpr * scale,
+    0,
+    0,
+    dpr * scale,
+    offsetX * dpr,
+    offsetY * dpr
+  );
 }
 
-function drawBackground() {
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
+
+/* DRAW BACKGROUND */
+
+function drawArena() {
 
   const gradient =
-    ctx.createLinearGradient(0, 0, 0, h);
+    ctx.createLinearGradient(
+      0,
+      0,
+      0,
+      WORLD_HEIGHT
+    );
 
-  gradient.addColorStop(0, "#131b2c");
-  gradient.addColorStop(1, "#06080d");
+  gradient.addColorStop(
+    0,
+    "#10192b"
+  );
 
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, w, h);
+  gradient.addColorStop(
+    1,
+    "#05070c"
+  );
+
+  ctx.fillStyle =
+    gradient;
+
+  ctx.fillRect(
+    0,
+    0,
+    WORLD_WIDTH,
+    WORLD_HEIGHT
+  );
+
+
+  /* moon */
+
+  ctx.fillStyle =
+    "rgba(255,255,255,.08)";
+
+  ctx.beginPath();
+
+  ctx.arc(
+    950,
+    125,
+    75,
+    0,
+    Math.PI * 2
+  );
+
+  ctx.fill();
+
+
+  /* stars */
+
+  for (
+    let i = 0;
+    i < 50;
+    i++
+  ) {
+
+    const x =
+      (i * 237) %
+      WORLD_WIDTH;
+
+    const y =
+      40 +
+      ((i * 97) %
+        220);
+
+    ctx.fillStyle =
+      "rgba(255,255,255,.25)";
+
+    ctx.fillRect(
+      x,
+      y,
+      2,
+      2
+    );
+  }
+
+
+  /* arena floor */
+
+  ctx.fillStyle =
+    "#0d131f";
+
+  ctx.fillRect(
+    0,
+    455,
+    WORLD_WIDTH,
+    145
+  );
+
 
   ctx.strokeStyle =
-    "rgba(255,255,255,.04)";
+    "rgba(130,170,255,.22)";
 
-  for (let x = 0; x < w; x += 50) {
+  ctx.lineWidth =
+    3;
+
+  ctx.beginPath();
+
+  ctx.moveTo(
+    0,
+    455
+  );
+
+  ctx.lineTo(
+    WORLD_WIDTH,
+    455
+  );
+
+  ctx.stroke();
+
+
+  /* floor grid */
+
+  ctx.strokeStyle =
+    "rgba(255,255,255,.035)";
+
+  ctx.lineWidth =
+    1;
+
+  for (
+    let x = 0;
+    x <= WORLD_WIDTH;
+    x += 50
+  ) {
+
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
+
+    ctx.moveTo(
+      x,
+      455
+    );
+
+    ctx.lineTo(
+      x,
+      WORLD_HEIGHT
+    );
+
     ctx.stroke();
   }
 
-  const ground =
-    worldToScreenY(455);
+  for (
+    let y = 455;
+    y <= WORLD_HEIGHT;
+    y += 35
+  ) {
 
-  ctx.fillStyle = "#111722";
-  ctx.fillRect(
-    0,
-    ground,
-    w,
-    h - ground
-  );
+    ctx.beginPath();
 
-  ctx.strokeStyle =
-    "rgba(255,255,255,.12)";
+    ctx.moveTo(
+      0,
+      y
+    );
 
-  ctx.beginPath();
-  ctx.moveTo(0, ground);
-  ctx.lineTo(w, ground);
-  ctx.stroke();
+    ctx.lineTo(
+      WORLD_WIDTH,
+      y
+    );
+
+    ctx.stroke();
+  }
 }
 
-function drawStickman(p, id) {
-  const x = worldToScreenX(p.x);
-  const y = worldToScreenY(p.y);
 
-  const scale =
-    Math.min(canvas.clientWidth / 1000, 1.5);
+/* PROJECTILES */
+
+function drawProjectiles() {
+
+  for (
+    const projectile
+    of projectiles
+  ) {
+
+    ctx.save();
+
+    ctx.translate(
+      projectile.x,
+      projectile.y
+    );
+
+    const direction =
+      projectile.vx >= 0
+        ? 1
+        : -1;
+
+    ctx.scale(
+      direction,
+      1
+    );
+
+
+    /* wind slash */
+
+    ctx.strokeStyle =
+      "rgba(130,225,255,.9)";
+
+    ctx.lineWidth =
+      8;
+
+    ctx.beginPath();
+
+    ctx.arc(
+      0,
+      0,
+      42,
+      -.9,
+      .9
+    );
+
+    ctx.stroke();
+
+    ctx.strokeStyle =
+      "rgba(255,255,255,.7)";
+
+    ctx.lineWidth =
+      3;
+
+    ctx.beginPath();
+
+    ctx.arc(
+      0,
+      0,
+      28,
+      -.8,
+      .8
+    );
+
+    ctx.stroke();
+
+    ctx.restore();
+  }
+}
+
+
+/* STICKMAN */
+
+function drawPlayer(
+  player,
+  id
+) {
+
+  if (
+    !player.connected
+  ) {
+    return;
+  }
 
   ctx.save();
 
-  ctx.translate(x, y);
+  ctx.translate(
+    player.x,
+    player.y
+  );
 
-  ctx.scale(scale, scale);
+  ctx.scale(
+    player.facing,
+    1
+  );
 
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
 
-  const bodyColor =
-    id === 1
-      ? "#ffffff"
-      : "#d7dbe5";
+  const bob =
+    player.grounded
+      ? Math.sin(
+          animationTime * 8 +
+          id
+        ) * 1.5
+      : 0;
 
-  ctx.strokeStyle = bodyColor;
-  ctx.lineWidth = 7;
+  ctx.translate(
+    0,
+    bob
+  );
 
-  // shadow
+
+  /* shadow */
 
   ctx.save();
 
-  ctx.scale(1, .25);
+  ctx.scale(
+    1,
+    .25
+  );
 
   ctx.fillStyle =
-    "rgba(0,0,0,.5)";
+    "rgba(0,0,0,.55)";
 
   ctx.beginPath();
 
   ctx.ellipse(
     0,
-    22,
+    15,
     45,
     15,
     0,
@@ -632,122 +1353,286 @@ function drawStickman(p, id) {
 
   ctx.restore();
 
-  // fire aura
 
-  if (p.action === "fire") {
+  /* ability aura */
+
+  if (
+    player.state ===
+    "fire"
+  ) {
     drawFireAura();
   }
 
-  // wind
+  if (
+    player.state ===
+    "dash"
+  ) {
+    drawDashAura();
+  }
 
-  if (p.action === "wind") {
+  if (
+    player.state ===
+    "wind"
+  ) {
     drawWindAura();
   }
 
-  // dash
 
-  if (p.action === "dash") {
-    drawDashAura(p.facing);
-  }
+  ctx.lineCap =
+    "round";
 
-  // head
+  ctx.lineJoin =
+    "round";
+
+  ctx.strokeStyle =
+    id === 1
+      ? "#ffffff"
+      : "#d8e0ff";
+
+  ctx.lineWidth =
+    8;
+
+
+  /* head */
 
   ctx.beginPath();
 
   ctx.arc(
     0,
-    -78,
-    23,
+    -110,
+    25,
     0,
     Math.PI * 2
   );
 
   ctx.stroke();
 
-  // body
+
+  /* body */
 
   ctx.beginPath();
 
-  ctx.moveTo(0, -55);
-  ctx.lineTo(0, 20);
+  ctx.moveTo(
+    0,
+    -84
+  );
+
+  ctx.lineTo(
+    0,
+    -20
+  );
 
   ctx.stroke();
 
-  // legs
+
+  /* legs */
 
   ctx.beginPath();
 
-  ctx.moveTo(0, 20);
-  ctx.lineTo(-28, 70);
+  ctx.moveTo(
+    0,
+    -20
+  );
 
-  ctx.moveTo(0, 20);
-  ctx.lineTo(28, 70);
+  ctx.lineTo(
+    -30,
+    0
+  );
+
+  ctx.lineTo(
+    -42,
+    43
+  );
+
+  ctx.moveTo(
+    0,
+    -20
+  );
+
+  ctx.lineTo(
+    30,
+    0
+  );
+
+  ctx.lineTo(
+    42,
+    43
+  );
 
   ctx.stroke();
 
-  // arms
 
-  let armAngle = 25;
+  /* arms */
 
-  if (p.action === "attack") {
-    armAngle = p.facing * -10;
+  ctx.beginPath();
+
+  ctx.moveTo(
+    0,
+    -72
+  );
+
+  if (
+    player.state ===
+    "attack"
+  ) {
+
+    ctx.lineTo(
+      82,
+      -85
+    );
+
+  } else if (
+    player.state ===
+    "kick"
+  ) {
+
+    ctx.lineTo(
+      38,
+      -35
+    );
+
+  } else {
+
+    ctx.lineTo(
+      43,
+      -38
+    );
   }
 
-  ctx.beginPath();
-
-  ctx.moveTo(0, -42);
-  ctx.lineTo(
-    -38,
-    -5
+  ctx.moveTo(
+    0,
+    -72
   );
 
-  ctx.moveTo(0, -42);
-  ctx.lineTo(
-    p.action === "attack"
-      ? 70 * p.facing
-      : 38,
-    p.action === "attack"
-      ? -30
-      : -5
-  );
+  if (
+    player.block
+  ) {
+
+    ctx.lineTo(
+      45,
+      -100
+    );
+
+  } else {
+
+    ctx.lineTo(
+      -43,
+      -38
+    );
+  }
 
   ctx.stroke();
 
-  // block shield
 
-  if (p.block) {
+  /* block shield */
+
+  if (
+    player.block
+  ) {
+
     ctx.strokeStyle =
-      "rgba(120,190,255,.9)";
+      "rgba(100,190,255,.95)";
 
-    ctx.lineWidth = 5;
+    ctx.lineWidth =
+      5;
 
     ctx.beginPath();
 
     ctx.arc(
-      0,
-      -35,
-      65,
-      -1.2,
-      1.2
+      15,
+      -75,
+      62,
+      -.9,
+      .9
     );
 
     ctx.stroke();
   }
 
-  ctx.restore();
-}
 
-function drawFireAura() {
-  for (let i = 0; i < 8; i++) {
-    ctx.fillStyle =
-      `rgba(255,${80 + Math.random()*100},20,.7)`;
+  /* invulnerability */
+
+  if (
+    player.invulnerable > 0
+  ) {
+
+    ctx.strokeStyle =
+      "rgba(255,255,255,.8)";
+
+    ctx.lineWidth =
+      3;
 
     ctx.beginPath();
 
     ctx.arc(
-      35 + Math.random() * 30,
-      -30 + Math.random() * 40,
-      5 + Math.random() * 9,
+      0,
+      -55,
+      82,
+      0,
+      Math.PI * 2
+    );
+
+    ctx.stroke();
+  }
+
+
+  ctx.restore();
+
+
+  /* name */
+
+  ctx.save();
+
+  ctx.textAlign =
+    "center";
+
+  ctx.font =
+    "bold 13px Arial";
+
+  ctx.fillStyle =
+    "rgba(255,255,255,.7)";
+
+  ctx.fillText(
+    `P${id}`,
+    player.x,
+    player.y - 155
+  );
+
+  ctx.restore();
+}
+
+
+/* FIRE AURA */
+
+function drawFireAura() {
+
+  for (
+    let i = 0;
+    i < 12;
+    i++
+  ) {
+
+    const angle =
+      Math.random() *
+      Math.PI * 2;
+
+    const radius =
+      35 +
+      Math.random() * 40;
+
+    ctx.fillStyle =
+      `rgba(255,${80 + Math.random() * 100},20,.65)`;
+
+    ctx.beginPath();
+
+    ctx.arc(
+      Math.cos(angle) *
+        radius,
+      -65 +
+        Math.sin(angle) *
+          radius,
+      4 +
+        Math.random() * 7,
       0,
       Math.PI * 2
     );
@@ -756,304 +1641,510 @@ function drawFireAura() {
   }
 }
 
-function drawWindAura() {
+
+/* DASH AURA */
+
+function drawDashAura() {
+
   ctx.strokeStyle =
-    "rgba(130,220,255,.8)";
+    "rgba(100,190,255,.8)";
 
-  ctx.lineWidth = 5;
+  ctx.lineWidth =
+    5;
 
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
+  for (
+    let i = 0;
+    i < 5;
+    i++
+  ) {
 
-    ctx.arc(
-      0,
-      -35,
-      45 + i * 13,
-      -1,
-      1
-    );
-
-    ctx.stroke();
-  }
-}
-
-function drawDashAura(direction) {
-  ctx.strokeStyle =
-    "rgba(130,190,255,.7)";
-
-  ctx.lineWidth = 6;
-
-  for (let i = 0; i < 5; i++) {
     ctx.beginPath();
 
     ctx.moveTo(
-      -direction * (30 + i * 20),
-      -20
+      -20 -
+        i * 20,
+      -55
     );
 
     ctx.lineTo(
-      -direction * (80 + i * 30),
-      -20
+      -80 -
+        i * 25,
+      -55
     );
 
     ctx.stroke();
   }
 }
 
-function drawEffects() {
-  for (const e of effects) {
-    const x = worldToScreenX(e.x);
-    const y = worldToScreenY(e.y);
+
+/* WIND AURA */
+
+function drawWindAura() {
+
+  ctx.strokeStyle =
+    "rgba(130,220,255,.8)";
+
+  ctx.lineWidth =
+    4;
+
+  for (
+    let i = 0;
+    i < 4;
+    i++
+  ) {
+
+    ctx.beginPath();
+
+    ctx.arc(
+      20,
+      -70,
+      35 + i * 15,
+      -.8,
+      .8
+    );
+
+    ctx.stroke();
+  }
+}
+
+
+/* EFFECT DRAWING */
+
+function drawEffects(
+  dt
+) {
+
+  for (
+    const effect
+    of effects
+  ) {
+
+    effect.life -= dt;
+
+    const alpha =
+      Math.max(
+        0,
+        effect.life /
+          effect.maxLife
+      );
 
     ctx.save();
 
     ctx.globalAlpha =
-      Math.max(0, e.life);
+      alpha;
 
-    if (e.type === "hit") {
-      ctx.fillStyle = "white";
-      ctx.font = "bold 28px Arial";
-      ctx.textAlign = "center";
+
+    if (
+      effect.type ===
+      "hit"
+    ) {
+
+      ctx.fillStyle =
+        "#ffffff";
+
+      ctx.font =
+        "bold 26px Arial";
+
+      ctx.textAlign =
+        "center";
+
       ctx.fillText(
-        e.text,
-        x,
-        y
+        `-${effect.damage}`,
+        effect.x,
+        effect.y -
+          (1 - alpha) * 30
+      );
+
+
+      for (
+        const particle
+        of effect.particles
+      ) {
+
+        particle.x +=
+          particle.vx *
+          dt;
+
+        particle.y +=
+          particle.vy *
+          dt;
+
+        particle.vy +=
+          600 * dt;
+
+        ctx.fillStyle =
+          "white";
+
+        ctx.fillRect(
+          particle.x,
+          particle.y,
+          5,
+          5
+        );
+      }
+
+    }
+
+
+    if (
+      effect.type ===
+      "fire"
+    ) {
+
+      ctx.font =
+        "60px Arial";
+
+      ctx.textAlign =
+        "center";
+
+      ctx.fillText(
+        "🔥",
+        effect.x,
+        effect.y
       );
     }
 
-    if (e.type === "fire") {
-      ctx.font = "50px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("🔥", x, y);
+
+    if (
+      effect.type ===
+      "dash"
+    ) {
+
+      ctx.font =
+        "55px Arial";
+
+      ctx.textAlign =
+        "center";
+
+      ctx.fillText(
+        "⚡",
+        effect.x,
+        effect.y
+      );
     }
 
-    if (e.type === "dash") {
-      ctx.font = "50px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("⚡", x, y);
+
+    if (
+      effect.type ===
+      "wind"
+    ) {
+
+      ctx.font =
+        "55px Arial";
+
+      ctx.textAlign =
+        "center";
+
+      ctx.fillText(
+        "🌪",
+        effect.x,
+        effect.y
+      );
     }
 
-    if (e.type === "wind") {
-      ctx.font = "50px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("🌪️", x, y);
+
+    if (
+      effect.type ===
+      "windHit"
+    ) {
+
+      ctx.strokeStyle =
+        "rgba(150,230,255,.9)";
+
+      ctx.lineWidth =
+        7;
+
+      ctx.beginPath();
+
+      ctx.arc(
+        effect.x,
+        effect.y,
+        55 *
+          (1 - alpha),
+        0,
+        Math.PI * 2
+      );
+
+      ctx.stroke();
     }
 
     ctx.restore();
   }
+
+  effects =
+    effects.filter(
+      effect =>
+        effect.life > 0
+    );
 }
 
+
+/* EFFECT CREATION FROM SERVER */
+
+function processEffects() {
+
+  for (
+    const effect
+    of localEffects
+  ) {
+    createEffect(
+      effect
+    );
+  }
+
+  localEffects = [];
+}
+
+
+/* UPDATE */
+
+function update(dt) {
+
+  if (
+    running
+  ) {
+
+    updateInput();
+
+    animationTime +=
+      dt;
+  }
+
+  processEffects();
+
+  drawEffects(
+    dt
+  );
+}
+
+
+/* DRAW */
+
 function draw() {
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
 
-  ctx.clearRect(0, 0, w, h);
+  const dpr =
+    Math.min(
+      2,
+      window.devicePixelRatio || 1
+    );
 
-  drawBackground();
+  ctx.setTransform(
+    dpr,
+    0,
+    0,
+    dpr,
+    0,
+    0
+  );
 
-  drawStickman(
+  ctx.clearRect(
+    0,
+    0,
+    canvas.clientWidth,
+    canvas.clientHeight
+  );
+
+  beginWorld();
+
+  drawArena();
+
+  drawProjectiles();
+
+  drawPlayer(
     players[1],
     1
   );
 
-  drawStickman(
+  drawPlayer(
     players[2],
     2
   );
-
-  drawEffects();
-
-  hp1.style.width =
-    `${players[1].hp}%`;
-
-  hp2.style.width =
-    `${players[2].hp}%`;
 }
+
+
+/* MAIN LOOP */
+
+let previous =
+  performance.now();
 
 function loop(now) {
-  const dt =
-    Math.min(.033, (now - lastTime) / 1000);
 
-  lastTime = now;
+  const dt =
+    Math.min(
+      .033,
+      (now - previous) /
+        1000
+    );
+
+  previous =
+    now;
 
   update(dt);
+
   draw();
 
-  requestAnimationFrame(loop);
+  requestAnimationFrame(
+    loop
+  );
 }
 
-requestAnimationFrame(loop);
+requestAnimationFrame(
+  loop
+);
 
-function endGame(winner) {
-  if (!gameRunning) return;
 
-  gameRunning = false;
+/* ROUND OVER */
 
-  gameMessage.hidden = false;
+function showRoundOver(
+  winner
+) {
 
-  gameMessage.textContent =
+  running = false;
+
+  gameOverlay.hidden =
+    false;
+
+  if (
+    winner === 0
+  ) {
+
+    winnerText.textContent =
+      "DRAW";
+
+  } else if (
     winner === myPlayer
-      ? "🏆 YOU WIN!"
-      : "💀 YOU LOSE";
+  ) {
 
-  setTimeout(() => {
-    gameMessage.hidden = true;
-  }, 5000);
+    winnerText.textContent =
+      "🏆 YOU WIN";
+
+  } else {
+
+    winnerText.textContent =
+      "💀 YOU LOSE";
+  }
+
+  roundText.textContent =
+    "Both players can press REMATCH.";
 }
 
-/*
- MOBILE CONTROLS
-*/
 
-document
-  .querySelectorAll("[data-key]")
-  .forEach(button => {
+/* REMATCH */
 
-    const key =
-      button.dataset.key;
+rematchButton.addEventListener(
+  "click",
+  () => {
 
-    const down = e => {
-      e.preventDefault();
+    send({
+      type:
+        "rematch"
+    });
 
-      if (key === "left") {
-        keys[controls().left] = true;
-      }
+    rematchButton.disabled =
+      true;
 
-      if (key === "right") {
-        keys[controls().right] = true;
-      }
+    roundText.textContent =
+      "Waiting for the other player...";
+  }
+);
 
-      if (key === "jump") {
-        keys[controls().jump] = true;
-      }
-    };
 
-    const up = e => {
-      e.preventDefault();
+/* LEAVE */
 
-      if (key === "left") {
-        keys[controls().left] = false;
-      }
+backButton.addEventListener(
+  "click",
+  () => {
 
-      if (key === "right") {
-        keys[controls().right] = false;
-      }
+    location.reload();
 
-      if (key === "jump") {
-        keys[controls().jump] = false;
-      }
-    };
+  }
+);
 
-    button.addEventListener(
-      "touchstart",
-      down,
-      { passive: false }
-    );
 
-    button.addEventListener(
-      "touchend",
-      up,
-      { passive: false }
-    );
+/* CREATE ROOM */
 
-    button.addEventListener(
-      "mousedown",
-      down
-    );
+createRoomButton.addEventListener(
+  "click",
+  () => {
 
-    button.addEventListener(
-      "mouseup",
-      up
-    );
+    if (!connected) {
+
+      lobbyStatus.textContent =
+        "Connecting to server...";
+
+      return;
+    }
+
+    send({
+      type:
+        "create"
+    });
+  }
+);
+
+
+/* SHOW JOIN */
+
+showJoinButton.addEventListener(
+  "click",
+  () => {
+
+    joinPanel.hidden =
+      false;
+
+    roomInput.focus();
+  }
+);
+
+
+/* JOIN */
+
+joinRoomButton.addEventListener(
+  "click",
+  joinRoom
+);
+
+roomInput.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      event.key ===
+      "Enter"
+    ) {
+      joinRoom();
+    }
+  }
+);
+
+function joinRoom() {
+
+  const code =
+    roomInput.value
+      .trim()
+      .toUpperCase();
+
+  if (
+    code.length !== 6
+  ) {
+
+    lobbyStatus.textContent =
+      "Room codes contain 6 characters.";
+
+    return;
+  }
+
+  send({
+    type:
+      "join",
+
+    code
   });
+}
 
-document
-  .querySelectorAll("[data-action]")
-  .forEach(button => {
 
-    button.addEventListener(
-      "touchstart",
-      e => {
-        e.preventDefault();
+/* INITIAL */
 
-        const action =
-          button.dataset.action;
-
-        if (action === "attack") {
-          attack();
-        }
-
-        if (action === "block") {
-          keys[controls().block] = true;
-        }
-      },
-      { passive: false }
-    );
-
-    button.addEventListener(
-      "touchend",
-      e => {
-        e.preventDefault();
-
-        if (
-          button.dataset.action === "block"
-        ) {
-          keys[controls().block] = false;
-        }
-      },
-      { passive: false }
-    );
-
-    button.addEventListener(
-      "mousedown",
-      () => {
-        const action =
-          button.dataset.action;
-
-        if (action === "attack") {
-          attack();
-        }
-
-        if (action === "block") {
-          keys[controls().block] = true;
-        }
-      }
-    );
-
-    button.addEventListener(
-      "mouseup",
-      () => {
-        if (
-          button.dataset.action === "block"
-        ) {
-          keys[controls().block] = false;
-        }
-      }
-    );
-  });
-
-document
-  .querySelectorAll("[data-ability]")
-  .forEach(button => {
-
-    const handler = e => {
-      e.preventDefault();
-
-      useAbility(
-        button.dataset.ability
-      );
-    };
-
-    button.addEventListener(
-      "touchstart",
-      handler,
-      { passive: false }
-    );
-
-    button.addEventListener(
-      "mousedown",
-      handler
-    );
-  });
+resizeCanvas();
 
 connect();
