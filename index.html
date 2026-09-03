@@ -1,14 +1,18 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
 
   <meta
     name="viewport"
-    content="width=device-width,
-    initial-scale=1,
-    maximum-scale=1,
-    user-scalable=no"
+    content="
+      width=device-width,
+      initial-scale=1,
+      maximum-scale=1,
+      user-scalable=no,
+      viewport-fit=cover
+    "
   >
 
   <title>Stickman Fight</title>
@@ -20,33 +24,46 @@
 
 <div id="app">
 
-  <header>
-    <div class="logo">
-      STICKMAN
+  <!-- HEADER -->
+
+  <header class="topbar">
+
+    <div class="brand">
+      <span>STICKMAN</span>
       <strong>FIGHT</strong>
     </div>
 
-    <div id="connection">
-      OFFLINE
+    <div id="connectionStatus">
+      CONNECTING
     </div>
+
   </header>
+
 
   <!-- LOBBY -->
 
-  <main id="lobby">
+  <section id="lobby">
 
     <div class="hero">
 
-      <div class="stickmanPreview">
-        <div class="previewHead"></div>
-        <div class="previewBody"></div>
-        <div class="previewArm left"></div>
-        <div class="previewArm right"></div>
-        <div class="previewLeg left"></div>
-        <div class="previewLeg right"></div>
+      <div class="stickmanLogo">
+
+        <div class="head"></div>
+
+        <div class="body"></div>
+
+        <div class="arm arm1"></div>
+        <div class="arm arm2"></div>
+
+        <div class="leg leg1"></div>
+        <div class="leg leg2"></div>
+
       </div>
 
-      <h1>STICKMAN FIGHT</h1>
+      <h1>
+        STICKMAN
+        <span>FIGHT</span>
+      </h1>
 
       <p>
         ONLINE 1V1 ARENA
@@ -54,94 +71,122 @@
 
     </div>
 
-    <div class="roomPanel">
 
-      <button id="createRoom">
+    <div class="lobbyCard">
+
+      <button
+        id="createRoom"
+        class="mainButton"
+      >
         CREATE ROOM
       </button>
 
-      <button id="showJoin">
+      <button
+        id="showJoin"
+        class="secondaryButton"
+      >
         JOIN ROOM
       </button>
 
-      <div id="joinPanel" hidden>
+
+      <div
+        id="joinPanel"
+        hidden
+      >
 
         <input
           id="roomInput"
+          type="text"
           maxlength="6"
           placeholder="ROOM CODE"
           autocomplete="off"
+          spellcheck="false"
         >
 
-        <button id="joinRoom">
+        <button
+          id="joinRoom"
+          class="mainButton"
+        >
           JOIN
         </button>
 
       </div>
 
+
       <div id="roomInfo"></div>
 
       <div id="lobbyStatus">
-        Create a room to start.
+        Create a room and invite another player.
       </div>
 
     </div>
 
-    <div class="features">
 
-      <div>
-        <span>👊</span>
+    <div class="featureRow">
+
+      <div class="feature">
+        <b>👊</b>
         COMBAT
       </div>
 
-      <div>
-        <span>🔥</span>
-        ABILITIES
+      <div class="feature">
+        <b>🔥</b>
+        POWERS
       </div>
 
-      <div>
-        <span>⚔️</span>
-        1V1
+      <div class="feature">
+        <b>⚡</b>
+        DASH
       </div>
 
-      <div>
-        <span>📱</span>
+      <div class="feature">
+        <b>📱</b>
         MOBILE
       </div>
 
     </div>
 
-  </main>
+  </section>
+
 
   <!-- GAME -->
 
-  <main id="game" hidden>
+  <section
+    id="game"
+    hidden
+  >
 
-    <div class="topHud">
+    <!-- HUD -->
 
-      <div class="playerHud">
+    <div class="hud">
 
-        <div class="playerName">
+      <div class="fighterHud">
+
+        <div class="fighterTitle">
           PLAYER 1
         </div>
 
-        <div class="health">
+        <div class="healthBar">
           <div id="hp1"></div>
         </div>
 
       </div>
 
-      <div id="timer">
-        60
+
+      <div class="roundTimer">
+        <span id="timer">
+          90
+        </span>
       </div>
 
-      <div class="playerHud">
 
-        <div class="playerName right">
+      <div class="fighterHud fighter2">
+
+        <div class="fighterTitle">
           PLAYER 2
         </div>
 
-        <div class="health">
+        <div class="healthBar">
           <div id="hp2"></div>
         </div>
 
@@ -149,88 +194,170 @@
 
     </div>
 
-    <div id="roomCodeDisplay"></div>
+
+    <div id="roomCodeDisplay">
+      ROOM
+    </div>
+
+
+    <!-- ARENA -->
 
     <canvas id="arena"></canvas>
 
-    <!-- MOBILE CONTROLS -->
+
+    <!-- PC HELP -->
+
+    <div id="pcControls">
+
+      <span id="controlText">
+        Controls
+      </span>
+
+    </div>
+
+
+    <!-- MOBILE -->
 
     <div id="mobileControls">
 
-      <div class="movement">
+      <div class="leftControls">
 
-        <button data-key="left">
+        <button
+          data-control="left"
+          class="controlButton"
+        >
           ◀
         </button>
 
-        <button data-key="jump">
+        <button
+          data-control="jump"
+          class="controlButton"
+        >
           ▲
         </button>
 
-        <button data-key="right">
+        <button
+          data-control="right"
+          class="controlButton"
+        >
           ▶
         </button>
 
       </div>
 
-      <div class="combatButtons">
 
-        <button data-action="attack">
+      <div class="rightControls">
+
+        <button
+          data-action="attack"
+          class="actionButton"
+        >
           👊
         </button>
 
-        <button data-action="block">
-          🛡️
+        <button
+          data-control="block"
+          class="actionButton"
+        >
+          🛡
         </button>
 
         <button
-          class="ability fire"
+          data-action="kick"
+          class="actionButton"
+        >
+          🦵
+        </button>
+
+        <button
           data-ability="fire"
+          class="abilityButton fireButton"
         >
           🔥
         </button>
 
         <button
-          class="ability dash"
           data-ability="dash"
+          class="abilityButton dashButton"
         >
           ⚡
         </button>
 
         <button
-          class="ability wind"
           data-ability="wind"
+          class="abilityButton windButton"
         >
-          🌪️
+          🌪
         </button>
 
       </div>
 
     </div>
 
-    <div id="cooldowns">
+
+    <!-- ABILITY STATUS -->
+
+    <div id="abilityStatus">
 
       <span id="fireCD">
-        FIRE
+        🔥 READY
       </span>
 
       <span id="dashCD">
-        DASH
+        ⚡ READY
       </span>
 
       <span id="windCD">
-        WIND
+        🌪 READY
       </span>
 
     </div>
 
-    <div id="gameMessage" hidden></div>
 
-  </main>
+    <!-- GAME OVER -->
+
+    <div
+      id="gameOverlay"
+      hidden
+    >
+
+      <div class="gameOverCard">
+
+        <div id="winnerText">
+          YOU WIN
+        </div>
+
+        <div id="roundText">
+          ROUND OVER
+        </div>
+
+        <button
+          id="rematchButton"
+          class="mainButton"
+        >
+          REMATCH
+        </button>
+
+        <button
+          id="backButton"
+          class="secondaryButton"
+        >
+          LEAVE
+        </button>
+
+      </div>
+
+    </div>
+
+  </section>
 
 </div>
 
-<script type="module" src="game.js"></script>
+
+<script
+  type="module"
+  src="game.js"
+></script>
 
 </body>
 </html>
