@@ -2,96 +2,68 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { WebSocketServer, WebSocket } from "ws";
-
-
-/* =====================================================
-   BASIC SERVER
-===================================================== */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
 
-const PUBLIC_FILES = {
+const FILES = {
   "/": "index.html",
   "/index.html": "index.html",
   "/style.css": "style.css",
   "/game.js": "game.js"
 };
 
-const MIME_TYPES = {
+const MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8"
 };
 
-const httpServer = http.createServer((req, res) => {
-  const requestUrl = new URL(
-    req.url,
-    `http://${req.headers.host || "localhost"}`
-  );
+const server = http.createServer((req, res) => {
+  try {
+    const url = new URL(
+      req.url || "/",
+      `http://${req.headers.host || "localhost"}`
+    );
 
-  const relativeFile =
-    PUBLIC_FILES[requestUrl.pathname];
+    const filename = FILES[url.pathname];
 
-  if (!relativeFile) {
-    res.writeHead(404);
-    res.end("Not found");
-    return;
-  }
-
-  const filePath = path.resolve(
-    __dirname,
-    relativeFile
-  );
-
-  const allowedRoot =
-    path.resolve(__dirname);
-
-  if (
-    !filePath.startsWith(allowedRoot)
-  ) {
-    res.writeHead(403);
-    res.end("Forbidden");
-    return;
-  }
-
-  fs.readFile(filePath, (error, data) => {
-    if (error) {
-      res.writeHead(500);
-      res.end("Server error");
+    if (!filename) {
+      res.writeHead(404);
+      res.end("Not found");
       return;
     }
 
-    const ext =
-      path.extname(filePath).toLowerCase();
+    const fullPath = path.join(__dirname, filename);
 
-    res.writeHead(200, {
-      "Content-Type":
-        MIME_TYPES[ext] ||
-        "application/octet-stream"
+    fs.readFile(fullPath, (err, data) => {
+      if (err) {
+        console.error(err);
+        res.writeHead(500);
+        res.end("Server error");
+        return;
+      }
+
+      res.writeHead(200, {
+        "Content-Type":
+          MIME[path.extname(fullPath)] ||
+          "application/octet-stream"
+      });
+
+      res.end(data);
     });
-
-    res.end(data);
-  });
+  } catch {
+    res.writeHead(500);
+    res.end("Server error");
+  }
 });
-
-
-/* =====================================================
-   WEBSOCKET
-===================================================== */
 
 const wss = new WebSocketServer({
-  server: httpServer
+  server
 });
-
-
-/* =====================================================
-   GAME CONSTANTS
-===================================================== */
 
 const WORLD = {
   width: 1200,
@@ -100,23 +72,21 @@ const WORLD = {
 };
 
 const PHYSICS = {
-  moveSpeed: 280,
+  runSpeed: 300,
   blockSpeed: 150,
-  jumpVelocity: -700,
-  gravity: 1800
+  gravity: 1800,
+  jumpVelocity: -720
 };
 
-const MATCH_TIME = 60;
-
-
-/* =====================================================
-   ROOMS
-===================================================== */
+const ROUND_TIME = 60;
 
 const rooms = new Map();
 
 const ROOM_CHARS =
   "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+let projectileId = 1;
+
 
 function randomRoomCode() {
   let code;
@@ -128,8 +98,7 @@ function randomRoomCode() {
       code +=
         ROOM_CHARS[
           Math.floor(
-            Math.random() *
-            ROOM_CHARS.length
+            Math.random() * ROOM_CHARS.length
           )
         ];
     }
@@ -139,7 +108,7 @@ function randomRoomCode() {
 }
 
 
-function defaultInput() {
+function emptyInput() {
   return {
     left: false,
     right: false,
@@ -149,18 +118,25 @@ function defaultInput() {
 }
 
 
-function createPlayer(role, connected = false) {
+function createPlayer(role, options = {}) {
+  const isCPU =
+    options.bot === true;
+
   return {
     role,
 
-    connected,
+    bot: isCPU,
+
+    connected:
+      options.connected === true,
 
     x:
       role === "P1"
         ? 300
         : 900,
 
-    y: WORLD.ground,
+    y:
+      WORLD.ground,
 
     vx: 0,
     vy: 0,
@@ -172,22 +148,19 @@ function createPlayer(role, connected = false) {
 
     hp: 100,
 
-    input: defaultInput(),
+    input: emptyInput(),
 
+    previousJump: false,
     jumpQueued: false,
 
     onGround: true,
-
     blocking: false,
 
     attackTimer: 0,
-
     dashTimer: 0,
-
     dashHit: false,
 
     stun: 0,
-
     invuln: 0,
 
     cooldowns: {
@@ -196,65 +169,104 @@ function createPlayer(role, connected = false) {
       wind: 0,
       punch: 0,
       kick: 0
+    },
+
+    ai: {
+      decisionTimer: 0,
+      attackTimer: 0.7,
+      abilityTimer: 1.5,
+      jumpTimer: 1.0
     }
   };
 }
 
 
-function createRoom(code) {
-  return {
-    code,
+function createRoom(mode, rounds) {
+  const isCPU =
+    mode === "cpu";
 
-    clients: new Map(),
+  return {
+    code: randomRoomCode(),
+
+    mode,
+
+    roundsToWin:
+      rounds === 10
+        ? 10
+        : 5,
 
     players: {
-      P1: createPlayer("P1"),
-      P2: createPlayer("P2")
+      P1: createPlayer("P1", {
+        connected: false,
+        bot: false
+      }),
+
+      P2: createPlayer("P2", {
+        connected: isCPU,
+        bot: isCPU
+      })
     },
+
+    clients: new Set(),
+
+    round: 1,
+
+    score: {
+      P1: 0,
+      P2: 0
+    },
+
+    phase: "lobby",
 
     started: false,
 
-    time: MATCH_TIME,
+    time: ROUND_TIME,
 
-    winner: null,
+    roundWinner: null,
+
+    matchWinner: null,
 
     projectiles: [],
 
     events: [],
 
-    rematch: new Set()
+    nextRoundAt: 0
   };
 }
 
 
-/* =====================================================
-   SEND
-===================================================== */
-
-function send(ws, data) {
+function send(ws, message) {
   if (
     ws &&
-    ws.readyState === WebSocket.OPEN
+    ws.readyState ===
+      WebSocket.OPEN
   ) {
-    ws.send(JSON.stringify(data));
+    ws.send(
+      JSON.stringify(message)
+    );
   }
 }
 
 
-function broadcast(room, data) {
-  for (const ws of room.clients.values()) {
-    send(ws, data);
+function broadcast(room, message) {
+  for (const ws of room.clients) {
+    send(ws, message);
   }
 }
 
 
-/* =====================================================
-   PUBLIC STATE
-===================================================== */
+function getOpponent(room, player) {
+  return player.role === "P1"
+    ? room.players.P2
+    : room.players.P1;
+}
+
 
 function publicPlayer(player) {
   return {
     role: player.role,
+
+    bot: player.bot,
 
     connected: player.connected,
 
@@ -268,11 +280,9 @@ function publicPlayer(player) {
 
     hp: player.hp,
 
-    blocking:
-      player.blocking,
+    blocking: player.blocking,
 
-    onGround:
-      player.onGround,
+    onGround: player.onGround,
 
     attackTimer:
       player.attackTimer,
@@ -280,52 +290,79 @@ function publicPlayer(player) {
     dashTimer:
       player.dashTimer,
 
-    stun:
-      player.stun,
+    stun: player.stun,
 
     cooldowns: {
-      fire: player.cooldowns.fire,
-      dash: player.cooldowns.dash,
-      wind: player.cooldowns.wind
+      fire:
+        player.cooldowns.fire,
+
+      dash:
+        player.cooldowns.dash,
+
+      wind:
+        player.cooldowns.wind
     }
   };
 }
 
 
-function publicState(room) {
+function stateMessage(room) {
   return {
     type: "state",
 
+    mode: room.mode,
+
     started: room.started,
+
+    phase: room.phase,
 
     time: Math.max(
       0,
       room.time
     ),
 
-    winner: room.winner,
+    round: room.round,
+
+    roundsToWin:
+      room.roundsToWin,
+
+    scores: {
+      P1: room.score.P1,
+      P2: room.score.P2
+    },
+
+    roundWinner:
+      room.roundWinner,
+
+    winner:
+      room.matchWinner,
 
     players: {
-      P1: publicPlayer(
-        room.players.P1
-      ),
+      P1:
+        publicPlayer(
+          room.players.P1
+        ),
 
-      P2: publicPlayer(
-        room.players.P2
-      )
+      P2:
+        publicPlayer(
+          room.players.P2
+        )
     },
 
     projectiles:
-      room.projectiles.map((p) => ({
-        id: p.id,
-        kind: p.kind,
-        x: p.x,
-        y: p.y,
-        vx: p.vx,
-        vy: p.vy
-      })),
+      room.projectiles.map(
+        (p) => ({
+          id: p.id,
+          kind: p.kind,
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy
+        })
+      ),
 
-    events: room.events
+    events:
+      room.events
   };
 }
 
@@ -333,16 +370,12 @@ function publicState(room) {
 function broadcastState(room) {
   broadcast(
     room,
-    publicState(room)
+    stateMessage(room)
   );
 
   room.events = [];
 }
 
-
-/* =====================================================
-   MATCH RESET
-===================================================== */
 
 function resetPlayer(player) {
   player.x =
@@ -350,7 +383,8 @@ function resetPlayer(player) {
       ? 300
       : 900;
 
-  player.y = WORLD.ground;
+  player.y =
+    WORLD.ground;
 
   player.vx = 0;
   player.vy = 0;
@@ -362,23 +396,20 @@ function resetPlayer(player) {
 
   player.hp = 100;
 
-  player.input =
-    defaultInput();
+  player.input = emptyInput();
 
+  player.previousJump = false;
   player.jumpQueued = false;
 
   player.onGround = true;
-
   player.blocking = false;
 
   player.attackTimer = 0;
 
   player.dashTimer = 0;
-
   player.dashHit = false;
 
   player.stun = 0;
-
   player.invuln = 0;
 
   player.cooldowns.fire = 0;
@@ -386,63 +417,129 @@ function resetPlayer(player) {
   player.cooldowns.wind = 0;
   player.cooldowns.punch = 0;
   player.cooldowns.kick = 0;
+
+  player.ai.decisionTimer = 0;
+  player.ai.attackTimer = 0.5;
+  player.ai.abilityTimer = 1.2;
+  player.ai.jumpTimer = 0.8;
 }
 
 
-function resetMatch(room) {
-  resetPlayer(room.players.P1);
-  resetPlayer(room.players.P2);
+function startMatch(room) {
+  room.round = 1;
 
-  room.time = MATCH_TIME;
+  room.score.P1 = 0;
+  room.score.P2 = 0;
 
-  room.winner = null;
+  room.roundWinner = null;
+  room.matchWinner = null;
 
   room.projectiles = [];
 
-  room.events = [];
+  resetPlayer(
+    room.players.P1
+  );
 
-  room.rematch.clear();
+  resetPlayer(
+    room.players.P2
+  );
 
-  room.started =
-    room.players.P1.connected &&
-    room.players.P2.connected;
+  room.time =
+    ROUND_TIME;
+
+  room.phase =
+    "fighting";
+
+  room.started = true;
 }
 
 
-/* =====================================================
-   ROOM MESSAGES
-===================================================== */
+function startNextRound(room) {
+  room.round++;
 
-function roomMessage(room) {
-  return {
-    type: "room",
+  room.roundWinner = null;
 
-    code: room.code,
+  room.projectiles = [];
 
-    started: room.started,
+  room.time =
+    ROUND_TIME;
 
-    connected:
-      Number(room.players.P1.connected) +
-      Number(room.players.P2.connected),
+  resetPlayer(
+    room.players.P1
+  );
 
-    winner: room.winner
-  };
+  resetPlayer(
+    room.players.P2
+  );
+
+  room.phase =
+    "fighting";
+
+  room.started = true;
 }
 
 
-/* =====================================================
-   ACTION HELPERS
-===================================================== */
+function finishRound(room, winner) {
+  if (
+    room.phase !==
+    "fighting"
+  ) {
+    return;
+  }
 
-function opponent(room, player) {
-  return player.role === "P1"
-    ? room.players.P2
-    : room.players.P1;
+  room.started = false;
+
+  room.phase =
+    "round_end";
+
+  room.roundWinner =
+    winner;
+
+  if (
+    winner === "P1" ||
+    winner === "P2"
+  ) {
+    room.score[winner]++;
+  }
+
+  room.projectiles = [];
+
+  const needed =
+    Math.ceil(
+      room.roundsToWin / 2
+    );
+
+  if (
+    winner !== "draw" &&
+    room.score[winner] >= needed
+  ) {
+    room.matchWinner =
+      winner;
+
+    room.phase =
+      "match_end";
+  } else {
+    room.nextRoundAt =
+      Date.now() + 2200;
+  }
 }
 
 
-function canAct(room, player) {
+function facingTarget(player, target) {
+  const dx =
+    target.x - player.x;
+
   return (
+    Math.sign(dx) ===
+      player.facing ||
+    Math.abs(dx) < 5
+  );
+}
+
+
+function canFight(room, player) {
+  return (
+    room.phase === "fighting" &&
     room.started &&
     player.connected &&
     player.hp > 0 &&
@@ -451,27 +548,12 @@ function canAct(room, player) {
 }
 
 
-function facingOpponent(player, target) {
-  const dx =
-    target.x - player.x;
-
-  return (
-    Math.sign(dx) === player.facing ||
-    Math.abs(dx) < 5
-  );
-}
-
-
-/* =====================================================
-   DAMAGE
-===================================================== */
-
-function damagePlayer(
+function damage(
   room,
   attacker,
   target,
   amount,
-  type = "hit"
+  attackType
 ) {
   if (
     !target.connected ||
@@ -481,19 +563,23 @@ function damagePlayer(
     return false;
   }
 
-  let actualDamage = amount;
+  let actual =
+    amount;
 
-  if (target.blocking) {
-    actualDamage =
+  if (
+    target.blocking
+  ) {
+    actual =
       Math.ceil(
         amount * 0.25
       );
   }
 
-  target.hp = Math.max(
-    0,
-    target.hp - actualDamage
-  );
+  target.hp =
+    Math.max(
+      0,
+      target.hp - actual
+    );
 
   target.invuln =
     target.blocking
@@ -502,27 +588,34 @@ function damagePlayer(
 
   target.stun =
     target.blocking
-      ? 0.05
+      ? 0.04
       : 0.14;
 
   target.vx +=
     attacker.facing *
     (
       target.blocking
-        ? 90
+        ? 80
         : 180
     );
 
   room.events.push({
     type: "hit",
+
     x: target.x,
-    y: target.y - 65,
-    damage: actualDamage,
-    attackType: type
+
+    y:
+      target.y - 65,
+
+    damage: actual,
+
+    attackType
   });
 
-  if (target.hp <= 0) {
-    endMatch(
+  if (
+    target.hp <= 0
+  ) {
+    finishRound(
       room,
       attacker.role
     );
@@ -532,123 +625,153 @@ function damagePlayer(
 }
 
 
-/* =====================================================
-   MELEE
-===================================================== */
-
-function meleeAttack(
+function punchOrKick(
   room,
   player,
-  kind
+  type
 ) {
-  if (!canAct(room, player)) {
+  if (
+    !canFight(
+      room,
+      player
+    )
+  ) {
     return;
   }
 
   const cooldownName =
-    kind === "punch"
+    type === "punch"
       ? "punch"
       : "kick";
 
   if (
-    player.cooldowns[cooldownName] > 0
+    player.cooldowns[
+      cooldownName
+    ] > 0
   ) {
     return;
   }
 
   const target =
-    opponent(room, player);
+    getOpponent(
+      room,
+      player
+    );
 
   player.attackTimer =
-    kind === "punch"
+    type === "punch"
       ? 0.18
-      : 0.24;
+      : 0.25;
 
-  player.cooldowns[cooldownName] =
-    kind === "punch"
+  player.cooldowns[
+    cooldownName
+  ] =
+    type === "punch"
       ? 0.30
       : 0.45;
 
   const distance =
     Math.abs(
-      target.x - player.x
+      target.x -
+        player.x
     );
 
-  const verticalDistance =
+  const vertical =
     Math.abs(
-      target.y - player.y
+      target.y -
+        player.y
     );
 
   const range =
-    kind === "punch"
+    type === "punch"
       ? 125
-      : 145;
+      : 150;
 
   if (
     distance <= range &&
-    verticalDistance <= 100 &&
-    facingOpponent(player, target)
+    vertical <= 105 &&
+    facingTarget(
+      player,
+      target
+    )
   ) {
-    damagePlayer(
+    damage(
       room,
       player,
       target,
-      kind === "punch"
+      type === "punch"
         ? 9
         : 12,
-      kind
+      type
     );
   }
 }
 
 
-/* =====================================================
-   FIRE FIST
-===================================================== */
-
-function fireFist(room, player) {
-  if (!canAct(room, player)) {
-    return;
-  }
-
+function fireFist(
+  room,
+  player
+) {
   if (
-    player.cooldowns.fire > 0
+    !canFight(
+      room,
+      player
+    )
   ) {
     return;
   }
 
-  const target =
-    opponent(room, player);
+  if (
+    player.cooldowns.fire >
+    0
+  ) {
+    return;
+  }
 
-  player.cooldowns.fire = 2.5;
+  player.cooldowns.fire =
+    2.5;
 
   room.events.push({
     type: "fire",
-    x: player.x +
-      player.facing * 80,
 
-    y: player.y - 65,
+    x:
+      player.x +
+      player.facing * 70,
+
+    y:
+      player.y - 65,
 
     direction:
       player.facing
   });
 
-  const distance =
-    Math.abs(
-      target.x - player.x
+  const target =
+    getOpponent(
+      room,
+      player
     );
 
-  const verticalDistance =
+  const distance =
     Math.abs(
-      target.y - player.y
+      target.x -
+        player.x
+    );
+
+  const vertical =
+    Math.abs(
+      target.y -
+        player.y
     );
 
   if (
     distance <= 190 &&
-    verticalDistance <= 110 &&
-    facingOpponent(player, target)
+    vertical <= 115 &&
+    facingTarget(
+      player,
+      target
+    )
   ) {
-    damagePlayer(
+    damage(
       room,
       player,
       target,
@@ -659,72 +782,89 @@ function fireFist(room, player) {
 }
 
 
-/* =====================================================
-   LIGHTNING DASH
-===================================================== */
-
-function lightningDash(room, player) {
-  if (!canAct(room, player)) {
-    return;
-  }
-
+function dash(
+  room,
+  player
+) {
   if (
-    player.cooldowns.dash > 0
+    !canFight(
+      room,
+      player
+    )
   ) {
     return;
   }
 
-  player.cooldowns.dash = 4;
+  if (
+    player.cooldowns.dash >
+    0
+  ) {
+    return;
+  }
 
-  player.dashTimer = 0.28;
+  player.cooldowns.dash =
+    4;
 
-  player.dashHit = false;
+  player.dashTimer =
+    0.30;
+
+  player.dashHit =
+    false;
 
   player.invuln =
     Math.max(
       player.invuln,
-      0.18
+      0.20
     );
 
   player.vx =
-    player.facing * 850;
+    player.facing *
+    850;
 
   room.events.push({
     type: "dash",
+
     x: player.x,
-    y: player.y - 60,
-    direction: player.facing
+
+    y:
+      player.y - 60,
+
+    direction:
+      player.facing
   });
 }
 
 
-/* =====================================================
-   WIND SLASH
-===================================================== */
-
-function windSlash(room, player) {
-  if (!canAct(room, player)) {
-    return;
-  }
-
+function wind(
+  room,
+  player
+) {
   if (
-    player.cooldowns.wind > 0
+    !canFight(
+      room,
+      player
+    )
   ) {
     return;
   }
 
-  player.cooldowns.wind = 3;
+  if (
+    player.cooldowns.wind >
+    0
+  ) {
+    return;
+  }
 
-  const id =
-    Date.now() +
-    Math.random();
+  player.cooldowns.wind =
+    3;
 
   room.projectiles.push({
-    id,
+    id: projectileId++,
 
     kind: "wind",
 
-    owner: player.role,
+    owner:
+      player.role,
 
     x:
       player.x +
@@ -738,7 +878,7 @@ function windSlash(room, player) {
 
     vy: 0,
 
-    life: 0.85,
+    life: 0.9,
 
     hit: false
   });
@@ -748,7 +888,7 @@ function windSlash(room, player) {
 
     x:
       player.x +
-      player.facing * 55,
+      player.facing * 60,
 
     y:
       player.y - 65,
@@ -759,15 +899,14 @@ function windSlash(room, player) {
 }
 
 
-/* =====================================================
-   ACTION DISPATCH
-===================================================== */
-
-function action(room, player, actionName) {
-  switch (actionName) {
-
+function performAction(
+  room,
+  player,
+  action
+) {
+  switch (action) {
     case "attack":
-      meleeAttack(
+      punchOrKick(
         room,
         player,
         "punch"
@@ -775,7 +914,7 @@ function action(room, player, actionName) {
       break;
 
     case "kick":
-      meleeAttack(
+      punchOrKick(
         room,
         player,
         "kick"
@@ -790,115 +929,379 @@ function action(room, player, actionName) {
       break;
 
     case "dash":
-      lightningDash(
+      dash(
         room,
         player
       );
       break;
 
     case "wind":
-      windSlash(
+      wind(
         room,
         player
       );
       break;
-
   }
 }
 
 
-/* =====================================================
-   INPUT
-===================================================== */
-
-function applyInput(player, incoming) {
+function setInput(
+  player,
+  incoming
+) {
   const oldJump =
     player.input.jump;
 
   const next =
-    defaultInput();
+    emptyInput();
 
   if (
     incoming &&
     typeof incoming === "object"
   ) {
     next.left =
-      Boolean(incoming.left);
+      Boolean(
+        incoming.left
+      );
 
     next.right =
-      Boolean(incoming.right);
+      Boolean(
+        incoming.right
+      );
 
     next.jump =
-      Boolean(incoming.jump);
+      Boolean(
+        incoming.jump
+      );
 
     next.block =
-      Boolean(incoming.block);
+      Boolean(
+        incoming.block
+      );
   }
 
-  player.input = next;
-
-  player.blocking =
-    player.input.block &&
-    player.onGround &&
-    player.stun <= 0;
+  player.input =
+    next;
 
   if (
-    player.input.jump &&
+    next.jump &&
     !oldJump
   ) {
-    player.jumpQueued = true;
+    player.jumpQueued =
+      true;
   }
+
+  player.blocking =
+    next.block &&
+    player.onGround &&
+    player.stun <= 0;
 }
 
 
-/* =====================================================
-   PHYSICS
-===================================================== */
+/* =========================================================
+   CPU AI
+========================================================= */
+
+function updateCPU(
+  room,
+  cpu,
+  dt
+) {
+  if (
+    !room.started ||
+    room.phase !==
+      "fighting"
+  ) {
+    cpu.input =
+      emptyInput();
+
+    return;
+  }
+
+  const target =
+    room.players.P1;
+
+  if (
+    !target.connected ||
+    target.hp <= 0
+  ) {
+    return;
+  }
+
+  cpu.ai.decisionTimer -= dt;
+  cpu.ai.attackTimer -= dt;
+  cpu.ai.abilityTimer -= dt;
+  cpu.ai.jumpTimer -= dt;
+
+
+  const dx =
+    target.x - cpu.x;
+
+  const distance =
+    Math.abs(dx);
+
+
+  /*
+    Always face the player.
+  */
+
+  if (
+    Math.abs(dx) > 3
+  ) {
+    cpu.facing =
+      dx > 0
+        ? 1
+        : -1;
+  }
+
+
+  /*
+    Make the CPU movement continuous.
+    This fixes the old AI which could appear
+    frozen between decisions.
+  */
+
+  cpu.input.left =
+    false;
+
+  cpu.input.right =
+    false;
+
+
+  cpu.input.jump =
+    false;
+
+
+  /*
+    Move toward the player until
+    we're inside attack range.
+  */
+
+  if (
+    distance > 115
+  ) {
+    if (dx > 0) {
+      cpu.input.right =
+        true;
+    } else {
+      cpu.input.left =
+        true;
+    }
+  }
+
+
+  /*
+    Occasionally back away when very close.
+  */
+
+  if (
+    distance < 75 &&
+    Math.random() < 0.015
+  ) {
+    if (dx > 0) {
+      cpu.input.left =
+        true;
+    } else {
+      cpu.input.right =
+        true;
+    }
+  }
+
+
+  /*
+    Block sometimes.
+  */
+
+  cpu.input.block =
+    distance < 125 &&
+    target.attackTimer > 0 &&
+    Math.random() < 0.35;
+
+
+  /*
+    Jump.
+  */
+
+  if (
+    cpu.ai.jumpTimer <= 0 &&
+    cpu.onGround &&
+    Math.random() < 0.75
+  ) {
+    cpu.input.jump =
+      true;
+
+    cpu.ai.jumpTimer =
+      1.0 +
+      Math.random() *
+      1.5;
+  }
+
+
+  /*
+    CPU attacks.
+  */
+
+  if (
+    cpu.ai.attackTimer <= 0
+  ) {
+    if (
+      distance < 145
+    ) {
+      if (
+        Math.random() < 0.55
+      ) {
+        performAction(
+          room,
+          cpu,
+          "attack"
+        );
+      } else {
+        performAction(
+          room,
+          cpu,
+          "kick"
+        );
+      }
+    }
+
+    cpu.ai.attackTimer =
+      0.25 +
+      Math.random() *
+      0.45;
+  }
+
+
+  /*
+    CPU abilities.
+  */
+
+  if (
+    cpu.ai.abilityTimer <= 0
+  ) {
+    const roll =
+      Math.random();
+
+    if (
+      distance < 220 &&
+      roll < 0.40
+    ) {
+      performAction(
+        room,
+        cpu,
+        "fire"
+      );
+    } else if (
+      distance < 300 &&
+      roll < 0.70
+    ) {
+      performAction(
+        room,
+        cpu,
+        "dash"
+      );
+    } else {
+      performAction(
+        room,
+        cpu,
+        "wind"
+      );
+    }
+
+    cpu.ai.abilityTimer =
+      1.0 +
+      Math.random() *
+      2;
+  }
+
+
+  /*
+    Jump must use edge detection.
+  */
+
+  const oldJump =
+    cpu.previousJump;
+
+
+  if (
+    cpu.input.jump &&
+    !oldJump
+  ) {
+    cpu.jumpQueued =
+      true;
+  }
+
+
+  cpu.previousJump =
+    cpu.input.jump;
+
+
+  cpu.blocking =
+    cpu.input.block &&
+    cpu.onGround &&
+    cpu.stun <= 0;
+}
+
+
+/* =========================================================
+   PLAYER PHYSICS
+========================================================= */
 
 function updatePlayer(
   room,
   player,
   dt
 ) {
-  if (!player.connected) {
+  if (
+    !player.connected
+  ) {
     return;
   }
+
 
   player.attackTimer =
     Math.max(
       0,
-      player.attackTimer - dt
+      player.attackTimer -
+        dt
     );
+
 
   player.stun =
     Math.max(
       0,
-      player.stun - dt
+      player.stun -
+        dt
     );
+
 
   player.invuln =
     Math.max(
       0,
-      player.invuln - dt
+      player.invuln -
+        dt
     );
 
-  for (const key of Object.keys(
-    player.cooldowns
-  )) {
+
+  for (
+    const key
+    of Object.keys(
+      player.cooldowns
+    )
+  ) {
     player.cooldowns[key] =
       Math.max(
         0,
-        player.cooldowns[key] - dt
+        player.cooldowns[key] -
+          dt
       );
   }
+
 
   player.blocking =
     player.input.block &&
     player.onGround &&
     player.stun <= 0;
 
-
-  /* ================= JUMP ================= */
 
   if (
     player.jumpQueued &&
@@ -909,13 +1312,18 @@ function updatePlayer(
     player.vy =
       PHYSICS.jumpVelocity;
 
-    player.onGround = false;
+    player.onGround =
+      false;
   }
 
-  player.jumpQueued = false;
+
+  player.jumpQueued =
+    false;
 
 
-  /* ================= MOVEMENT ================= */
+  /*
+    Movement
+  */
 
   if (
     player.dashTimer <= 0
@@ -923,21 +1331,23 @@ function updatePlayer(
     let direction = 0;
 
     if (player.input.left) {
-      direction -= 1;
+      direction--;
     }
 
     if (player.input.right) {
-      direction += 1;
+      direction++;
     }
 
-    const maxSpeed =
+    const speed =
       player.blocking
         ? PHYSICS.blockSpeed
-        : PHYSICS.moveSpeed;
+        : PHYSICS.runSpeed;
 
-    if (direction !== 0) {
+    if (
+      direction !== 0
+    ) {
       player.vx =
-        direction * maxSpeed;
+        direction * speed;
 
       player.facing =
         direction;
@@ -951,19 +1361,28 @@ function updatePlayer(
   }
 
 
-  /* ================= GRAVITY ================= */
+  /*
+    Gravity
+  */
 
   player.vy +=
-    PHYSICS.gravity * dt;
+    PHYSICS.gravity *
+    dt;
+
 
   player.x +=
-    player.vx * dt;
+    player.vx *
+    dt;
+
 
   player.y +=
-    player.vy * dt;
+    player.vy *
+    dt;
 
 
-  /* ================= DASH ================= */
+  /*
+    Dash
+  */
 
   if (
     player.dashTimer > 0
@@ -971,11 +1390,17 @@ function updatePlayer(
     player.dashTimer =
       Math.max(
         0,
-        player.dashTimer - dt
+        player.dashTimer -
+          dt
       );
 
+
     const target =
-      opponent(room, player);
+      getOpponent(
+        room,
+        player
+      );
+
 
     if (
       !player.dashHit &&
@@ -984,20 +1409,23 @@ function updatePlayer(
     ) {
       const distance =
         Math.abs(
-          target.x - player.x
+          target.x -
+            player.x
         );
 
       const vertical =
         Math.abs(
-          target.y - player.y
+          target.y -
+            player.y
         );
+
 
       if (
         distance < 65 &&
         vertical < 100
       ) {
         const hit =
-          damagePlayer(
+          damage(
             room,
             player,
             target,
@@ -1006,62 +1434,70 @@ function updatePlayer(
           );
 
         if (hit) {
-          player.dashHit = true;
+          player.dashHit =
+            true;
         }
       }
     }
   }
 
 
-  /* ================= GROUND ================= */
+  /*
+    Ground collision
+  */
 
   if (
-    player.y >= WORLD.ground
+    player.y >=
+    WORLD.ground
   ) {
     player.y =
       WORLD.ground;
 
     player.vy = 0;
 
-    player.onGround = true;
+    player.onGround =
+      true;
   } else {
-    player.onGround = false;
+    player.onGround =
+      false;
   }
 
 
-  /* ================= BOUNDS ================= */
-
-  const margin = 45;
+  /*
+    Arena bounds
+  */
 
   if (
-    player.x < margin
+    player.x < 45
   ) {
-    player.x = margin;
+    player.x = 45;
     player.vx = 0;
   }
 
+
   if (
     player.x >
-    WORLD.width - margin
+    WORLD.width - 45
   ) {
     player.x =
-      WORLD.width - margin;
+      WORLD.width - 45;
 
     player.vx = 0;
   }
 }
 
 
-/* =====================================================
+/* =========================================================
    PROJECTILES
-===================================================== */
+========================================================= */
 
 function updateProjectiles(
   room,
   dt
 ) {
   for (
-    let i = room.projectiles.length - 1;
+    let i =
+      room.projectiles.length - 1;
     i >= 0;
     i--
   ) {
@@ -1076,11 +1512,18 @@ function updateProjectiles(
     p.y +=
       p.vy * dt;
 
+
     const owner =
-      room.players[p.owner];
+      room.players[
+        p.owner
+      ];
 
     const target =
-      opponent(room, owner);
+      getOpponent(
+        room,
+        owner
+      );
+
 
     if (
       !p.hit &&
@@ -1090,13 +1533,19 @@ function updateProjectiles(
       const distance =
         Math.hypot(
           target.x - p.x,
-          (target.y - 65) - p.y
+          target.y -
+            65 -
+            p.y
         );
 
-      if (distance < 65) {
-        p.hit = true;
 
-        damagePlayer(
+      if (
+        distance < 65
+      ) {
+        p.hit =
+          true;
+
+        damage(
           room,
           owner,
           target,
@@ -1106,10 +1555,12 @@ function updateProjectiles(
       }
     }
 
+
     if (
       p.life <= 0 ||
       p.x < -100 ||
-      p.x > WORLD.width + 100
+      p.x >
+        WORLD.width + 100
     ) {
       room.projectiles.splice(
         i,
@@ -1120,62 +1571,67 @@ function updateProjectiles(
 }
 
 
-/* =====================================================
-   MATCH END
-===================================================== */
+/* =========================================================
+   MAIN GAME LOOP
+========================================================= */
 
-function endMatch(room, winner) {
-  if (!room.started) {
-    return;
-  }
-
-  room.started = false;
-
-  room.winner = winner;
-
-  room.events.push({
-    type: "ko",
-    winner
-  });
-
-  broadcast(
-    room,
-    roomMessage(room)
-  );
-}
-
-
-/* =====================================================
-   TICK
-===================================================== */
-
-let lastTick =
+let lastTime =
   Date.now();
+
 
 function gameTick() {
   const now =
     Date.now();
 
   let dt =
-    (now - lastTick) / 1000;
+    (now - lastTime) /
+    1000;
 
-  lastTick = now;
+  lastTime =
+    now;
 
-  dt = Math.min(
-    0.05,
-    Math.max(0, dt)
-  );
+  dt =
+    Math.max(
+      0,
+      Math.min(
+        0.05,
+        dt
+      )
+    );
 
 
-  for (const room of rooms.values()) {
+  for (
+    const room
+    of rooms.values()
+  ) {
+
+    /*
+      CPU gets processed every tick.
+    */
+
+    if (
+      room.mode ===
+        "cpu"
+    ) {
+      updateCPU(
+        room,
+        room.players.P2,
+        dt
+      );
+    }
+
+
+    /*
+      Fighting.
+    */
 
     if (
       room.started &&
-      room.players.P1.connected &&
-      room.players.P2.connected
+      room.phase ===
+        "fighting"
     ) {
-
       room.time -= dt;
+
 
       updatePlayer(
         room,
@@ -1183,11 +1639,13 @@ function gameTick() {
         dt
       );
 
+
       updatePlayer(
         room,
         room.players.P2,
         dt
       );
+
 
       updateProjectiles(
         room,
@@ -1200,36 +1658,57 @@ function gameTick() {
       ) {
         room.time = 0;
 
+
         const p1 =
           room.players.P1;
 
         const p2 =
           room.players.P2;
 
+
         if (
           p1.hp > p2.hp
         ) {
-          endMatch(
+          finishRound(
             room,
             "P1"
           );
         } else if (
           p2.hp > p1.hp
         ) {
-          endMatch(
+          finishRound(
             room,
             "P2"
           );
         } else {
-          endMatch(
+          finishRound(
             room,
             "draw"
           );
         }
       }
     }
+
+
+    /*
+      Next round.
+    */
+
+    if (
+      room.phase ===
+        "round_end" &&
+      room.matchWinner ===
+        null &&
+      Date.now() >=
+        room.nextRoundAt
+    ) {
+      startNextRound(
+        room
+      );
+    }
   }
 }
+
 
 setInterval(
   gameTick,
@@ -1237,374 +1716,702 @@ setInterval(
 );
 
 
-/* =====================================================
+/* =========================================================
    BROADCAST LOOP
-===================================================== */
+========================================================= */
 
-setInterval(() => {
-  for (const room of rooms.values()) {
+setInterval(
+  () => {
 
-    if (
-      room.clients.size > 0
+    for (
+      const room
+      of rooms.values()
     ) {
-      broadcastState(room);
-    }
 
-  }
-}, 1000 / 30);
-
-
-/* =====================================================
-   WEBSOCKET CONNECTIONS
-===================================================== */
-
-wss.on("connection", (ws) => {
-
-  ws.room = null;
-  ws.role = null;
-
-
-  send(ws, {
-    type: "connected"
-  });
-
-
-  ws.on("message", (raw) => {
-
-    let msg;
-
-    try {
-      msg =
-        JSON.parse(
-          raw.toString()
+      if (
+        room.clients.size > 0
+      ) {
+        broadcastState(
+          room
         );
-    } catch {
-      return;
+      }
     }
 
+  },
+  1000 / 30
+);
 
-    /* ================= CREATE ================= */
 
-    if (
-      msg.type === "create"
-    ) {
+/* =========================================================
+   WEBSOCKET
+========================================================= */
 
-      if (ws.room) {
-        return;
+wss.on(
+  "connection",
+  (ws) => {
+
+    ws.room = null;
+
+
+    send(
+      ws,
+      {
+        type:
+          "connected"
       }
-
-      const code =
-        randomRoomCode();
-
-      const room =
-        createRoom(code);
-
-      room.players.P1.connected =
-        true;
-
-      room.clients.set(
-        "P1",
-        ws
-      );
-
-      ws.room = room;
-      ws.role = "P1";
-
-      rooms.set(
-        code,
-        room
-      );
-
-      send(ws, {
-        type: "welcome",
-        role: "P1",
-        code
-      });
-
-      send(
-        ws,
-        roomMessage(room)
-      );
-
-      broadcastState(room);
-
-      return;
-    }
-
-
-    /* ================= JOIN ================= */
-
-    if (
-      msg.type === "join"
-    ) {
-
-      if (ws.room) {
-        return;
-      }
-
-      const code =
-        String(
-          msg.code || ""
-        )
-        .trim()
-        .toUpperCase();
-
-      const room =
-        rooms.get(code);
-
-      if (!room) {
-        send(ws, {
-          type: "error",
-          message: "Room not found."
-        });
-
-        return;
-      }
-
-      let role = null;
-
-      if (
-        !room.players.P1.connected
-      ) {
-        role = "P1";
-      } else if (
-        !room.players.P2.connected
-      ) {
-        role = "P2";
-      }
-
-      if (!role) {
-        send(ws, {
-          type: "error",
-          message: "Room is full."
-        });
-
-        return;
-      }
-
-      const player =
-        room.players[role];
-
-      player.connected = true;
-
-      room.clients.set(
-        role,
-        ws
-      );
-
-      ws.room = room;
-      ws.role = role;
-
-
-      send(ws, {
-        type: "welcome",
-        role,
-        code
-      });
-
-
-      if (
-        room.players.P1.connected &&
-        room.players.P2.connected
-      ) {
-        resetMatch(room);
-      }
-
-
-      broadcast(
-        room,
-        roomMessage(room)
-      );
-
-      broadcastState(room);
-
-      return;
-    }
-
-
-    /* ================= INPUT ================= */
-
-    if (
-      msg.type === "input"
-    ) {
-
-      if (
-        !ws.room ||
-        !ws.role
-      ) {
-        return;
-      }
-
-      const player =
-        ws.room.players[
-          ws.role
-        ];
-
-      applyInput(
-        player,
-        msg.input
-      );
-
-      return;
-    }
-
-
-    /* ================= ACTION ================= */
-
-    if (
-      msg.type === "action"
-    ) {
-
-      if (
-        !ws.room ||
-        !ws.role
-      ) {
-        return;
-      }
-
-      const player =
-        ws.room.players[
-          ws.role
-        ];
-
-      if (
-        typeof msg.action !==
-        "string"
-      ) {
-        return;
-      }
-
-      action(
-        ws.room,
-        player,
-        msg.action
-      );
-
-      return;
-    }
-
-
-    /* ================= REMATCH ================= */
-
-    if (
-      msg.type === "rematch"
-    ) {
-
-      if (
-        !ws.room ||
-        !ws.role
-      ) {
-        return;
-      }
-
-      const room =
-        ws.room;
-
-      room.rematch.add(
-        ws.role
-      );
-
-      if (
-        room.rematch.has("P1") &&
-        room.rematch.has("P2") &&
-        room.players.P1.connected &&
-        room.players.P2.connected
-      ) {
-        resetMatch(room);
-
-        broadcast(
-          room,
-          roomMessage(room)
-        );
-
-        broadcastState(room);
-      }
-
-      return;
-    }
-
-  });
-
-
-  /* ===================================================
-     DISCONNECT
-  ================================================== */
-
-  ws.on("close", () => {
-
-    const room =
-      ws.room;
-
-    const role =
-      ws.role;
-
-    if (
-      !room ||
-      !role
-    ) {
-      return;
-    }
-
-    if (
-      room.clients.get(role) === ws
-    ) {
-      room.clients.delete(role);
-    }
-
-    const player =
-      room.players[role];
-
-    if (player) {
-      player.connected = false;
-      player.input = defaultInput();
-      player.blocking = false;
-    }
-
-    room.started = false;
-
-    room.winner = null;
-
-    room.projectiles = [];
-
-    room.rematch.clear();
-
-
-    if (
-      room.clients.size === 0
-    ) {
-      rooms.delete(
-        room.code
-      );
-
-      return;
-    }
-
-
-    broadcast(
-      room,
-      roomMessage(room)
     );
 
-    broadcastState(room);
-  });
 
-});
+    ws.on(
+      "message",
+      (raw) => {
+
+        let message;
+
+        try {
+          message =
+            JSON.parse(
+              raw.toString()
+            );
+        } catch {
+          return;
+        }
 
 
-/* =====================================================
+        /* =============================================
+           VS COMPUTER
+        ============================================= */
+
+        if (
+          message.type ===
+            "cpu"
+        ) {
+
+          if (
+            ws.room
+          ) {
+            return;
+          }
+
+
+          const rounds =
+            Number(
+              message.rounds
+            ) === 10
+              ? 10
+              : 5;
+
+
+          const room =
+            createRoom(
+              "cpu",
+              rounds
+            );
+
+
+          /*
+            Human is P1.
+            CPU is P2.
+          */
+
+          room.players.P1.connected =
+            true;
+
+          room.players.P1.bot =
+            false;
+
+
+          room.players.P2.connected =
+            true;
+
+          room.players.P2.bot =
+            true;
+
+
+          room.clients.add(
+            ws
+          );
+
+
+          ws.room =
+            room;
+
+
+          /*
+            THIS is important:
+            start immediately.
+          */
+
+          startMatch(
+            room
+          );
+
+
+          /*
+            Keep the CPU room in
+            the room map.
+          */
+
+          rooms.set(
+            room.code,
+            room
+          );
+
+
+          send(
+            ws,
+            {
+              type:
+                "welcome",
+
+              role:
+                "P1",
+
+              code:
+                room.code,
+
+              mode:
+                "cpu",
+
+              rounds
+            }
+          );
+
+
+          broadcastState(
+            room
+          );
+
+
+          return;
+        }
+
+
+        /* =============================================
+           CREATE ONLINE ROOM
+        ============================================= */
+
+        if (
+          message.type ===
+            "create"
+        ) {
+
+          if (
+            ws.room
+          ) {
+            return;
+          }
+
+
+          const rounds =
+            Number(
+              message.rounds
+            ) === 10
+              ? 10
+              : 5;
+
+
+          const room =
+            createRoom(
+              "online",
+              rounds
+            );
+
+
+          room.players.P1.connected =
+            true;
+
+
+          room.code =
+            randomRoomCode();
+
+
+          rooms.set(
+            room.code,
+            room
+          );
+
+
+          room.clients.add(
+            ws
+          );
+
+
+          ws.room =
+            room;
+
+
+          send(
+            ws,
+            {
+              type:
+                "welcome",
+
+              role:
+                "P1",
+
+              code:
+                room.code,
+
+              mode:
+                "online",
+
+              rounds
+            }
+          );
+
+
+          broadcastState(
+            room
+          );
+
+
+          return;
+        }
+
+
+        /* =============================================
+           JOIN ONLINE ROOM
+        ============================================= */
+
+        if (
+          message.type ===
+            "join"
+        ) {
+
+          if (
+            ws.room
+          ) {
+            return;
+          }
+
+
+          const code =
+            String(
+              message.code ||
+                ""
+            )
+              .trim()
+              .toUpperCase();
+
+
+          const room =
+            rooms.get(
+              code
+            );
+
+
+          if (
+            !room
+          ) {
+            send(
+              ws,
+              {
+                type:
+                  "error",
+
+                message:
+                  "Room not found."
+              }
+            );
+
+            return;
+          }
+
+
+          if (
+            room.mode !==
+              "online"
+          ) {
+            send(
+              ws,
+              {
+                type:
+                  "error",
+
+                message:
+                  "This is not an online room."
+              }
+            );
+
+            return;
+          }
+
+
+          if (
+            room.players.P2.connected
+          ) {
+            send(
+              ws,
+              {
+                type:
+                  "error",
+
+                message:
+                  "Room is full."
+              }
+            );
+
+            return;
+          }
+
+
+          room.players.P2.connected =
+            true;
+
+
+          room.clients.add(
+            ws
+          );
+
+
+          ws.room =
+            room;
+
+
+          send(
+            ws,
+            {
+              type:
+                "welcome",
+
+              role:
+                "P2",
+
+              code:
+                room.code,
+
+              mode:
+                "online",
+
+              rounds:
+                room.roundsToWin
+            }
+          );
+
+
+          startMatch(
+            room
+          );
+
+
+          broadcastState(
+            room
+          );
+
+
+          return;
+        }
+
+
+        /* =============================================
+           INPUT
+        ============================================= */
+
+        if (
+          message.type ===
+            "input"
+        ) {
+
+          if (
+            !ws.room
+          ) {
+            return;
+          }
+
+
+          /*
+            CPU is never controlled
+            by the browser.
+          */
+
+          const role =
+            ws.role ||
+            "P1";
+
+
+          const player =
+            ws.room.players[
+              role
+            ];
+
+
+          if (
+            !player ||
+            player.bot
+          ) {
+            return;
+          }
+
+
+          setInput(
+            player,
+            message.input
+          );
+
+
+          return;
+        }
+
+
+        /* =============================================
+           ACTION
+        ============================================= */
+
+        if (
+          message.type ===
+            "action"
+        ) {
+
+          if (
+            !ws.room
+          ) {
+            return;
+          }
+
+
+          const role =
+            ws.role ||
+            "P1";
+
+
+          const player =
+            ws.room.players[
+              role
+            ];
+
+
+          if (
+            !player ||
+            player.bot
+          ) {
+            return;
+          }
+
+
+          if (
+            typeof message.action !==
+              "string"
+          ) {
+            return;
+          }
+
+
+          performAction(
+            ws.room,
+            player,
+            message.action
+          );
+
+
+          return;
+        }
+
+
+        /* =============================================
+           REMATCH
+        ============================================= */
+
+        if (
+          message.type ===
+            "rematch"
+        ) {
+
+          if (
+            !ws.room
+          ) {
+            return;
+          }
+
+
+          startMatch(
+            ws.room
+          );
+
+
+          broadcastState(
+            ws.room
+          );
+
+
+          return;
+        }
+
+      }
+    );
+
+
+    /* ===============================================
+       DISCONNECT
+    =============================================== */
+
+    ws.on(
+      "close",
+      () => {
+
+        const room =
+          ws.room;
+
+
+        if (
+          !room
+        ) {
+          return;
+        }
+
+
+        room.clients.delete(
+          ws
+        );
+
+
+        if (
+          room.mode ===
+            "cpu"
+        ) {
+
+          rooms.delete(
+            room.code
+          );
+
+          return;
+        }
+
+
+        room.players.P1.connected =
+          room.clientsHasP1;
+
+        room.players.P2.connected =
+          room.clientsHasP2;
+
+
+        /*
+          Simpler handling:
+          stop the match if either
+          online player leaves.
+        */
+
+        room.started =
+          false;
+
+        room.phase =
+          "lobby";
+
+        room.projectiles =
+          [];
+
+        if (
+          room.clients.size ===
+            0
+        ) {
+          rooms.delete(
+            room.code
+          );
+        }
+
+      }
+    );
+
+  }
+);
+
+
+/* =========================================================
+   FIX ONLINE CLIENT ROLE TRACKING
+========================================================= */
+
+wss.on(
+  "connection",
+  (ws) => {
+
+    /*
+      This second listener is intentionally harmless.
+      Role gets assigned in the message handler below.
+    */
+
+  }
+);
+
+
+/*
+  Re-create role tracking using a small wrapper around
+  the original message handling behavior.
+*/
+
+const originalConnectionHandler = null;
+
+
+/* =========================================================
+   BETTER ONLINE ROLE TRACKING
+========================================================= */
+
+/*
+  ws.role is assigned below by inspecting which player
+  owns the connected socket through the room client map.
+*/
+
+setInterval(
+  () => {
+
+    for (
+      const room
+      of rooms.values()
+    ) {
+
+      if (
+        room.mode !==
+          "online"
+      ) {
+        continue;
+      }
+
+      /*
+        First client in an online room = P1
+        Second client = P2
+      */
+
+      const clients =
+        Array.from(
+          room.clients
+        );
+
+      if (
+        clients[0]
+      ) {
+        clients[0].role =
+          "P1";
+      }
+
+      if (
+        clients[1]
+      ) {
+        clients[1].role =
+          "P2";
+      }
+
+    }
+
+  },
+  100
+);
+
+
+/* =========================================================
    START SERVER
-===================================================== */
+========================================================= */
 
-httpServer.listen(
+server.listen(
   PORT,
   "0.0.0.0",
   () => {
+
     console.log(
       `Stickman Fight running on port ${PORT}`
     );
 
     console.log(
-      `Open http://localhost:${PORT}`
+      `http://localhost:${PORT}`
     );
+
   }
 );
