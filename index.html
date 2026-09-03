@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width,
+    initial-scale=1,
+    maximum-scale=1,
+    user-scalable=no"
+  >
+
+  <title>Stickman Fight</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div id="app">
+
+  <header>
+    <div class="logo">
+      STICKMAN
+      <strong>FIGHT</strong>
+    </div>
+
+    <div id="connection">
+      OFFLINE
+    </div>
+  </header>
+
+  <!-- LOBBY -->
+
+  <main id="lobby">
+
+    <div class="hero">
+
+      <div class="stickmanPreview">
+        <div class="previewHead"></div>
+        <div class="previewBody"></div>
+        <div class="previewArm left"></div>
+        <div class="previewArm right"></div>
+        <div class="previewLeg left"></div>
+        <div class="previewLeg right"></div>
+      </div>
+
+      <h1>STICKMAN FIGHT</h1>
+
+      <p>
+        ONLINE 1V1 ARENA
+      </p>
+
+    </div>
+
+    <div class="roomPanel">
+
+      <button id="createRoom">
+        CREATE ROOM
+      </button>
+
+      <button id="showJoin">
+        JOIN ROOM
+      </button>
+
+      <div id="joinPanel" hidden>
+
+        <input
+          id="roomInput"
+          maxlength="6"
+          placeholder="ROOM CODE"
+          autocomplete="off"
+        >
+
+        <button id="joinRoom">
+          JOIN
+        </button>
+
+      </div>
+
+      <div id="roomInfo"></div>
+
+      <div id="lobbyStatus">
+        Create a room to start.
+      </div>
+
+    </div>
+
+    <div class="features">
+
+      <div>
+        <span>👊</span>
+        COMBAT
+      </div>
+
+      <div>
+        <span>🔥</span>
+        ABILITIES
+      </div>
+
+      <div>
+        <span>⚔️</span>
+        1V1
+      </div>
+
+      <div>
+        <span>📱</span>
+        MOBILE
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- GAME -->
+
+  <main id="game" hidden>
+
+    <div class="topHud">
+
+      <div class="playerHud">
+
+        <div class="playerName">
+          PLAYER 1
+        </div>
+
+        <div class="health">
+          <div id="hp1"></div>
+        </div>
+
+      </div>
+
+      <div id="timer">
+        60
+      </div>
+
+      <div class="playerHud">
+
+        <div class="playerName right">
+          PLAYER 2
+        </div>
+
+        <div class="health">
+          <div id="hp2"></div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div id="roomCodeDisplay"></div>
+
+    <canvas id="arena"></canvas>
+
+    <!-- MOBILE CONTROLS -->
+
+    <div id="mobileControls">
+
+      <div class="movement">
+
+        <button data-key="left">
+          ◀
+        </button>
+
+        <button data-key="jump">
+          ▲
+        </button>
+
+        <button data-key="right">
+          ▶
+        </button>
+
+      </div>
+
+      <div class="combatButtons">
+
+        <button data-action="attack">
+          👊
+        </button>
+
+        <button data-action="block">
+          🛡️
+        </button>
+
+        <button
+          class="ability fire"
+          data-ability="fire"
+        >
+          🔥
+        </button>
+
+        <button
+          class="ability dash"
+          data-ability="dash"
+        >
+          ⚡
+        </button>
+
+        <button
+          class="ability wind"
+          data-ability="wind"
+        >
+          🌪️
+        </button>
+
+      </div>
+
+    </div>
+
+    <div id="cooldowns">
+
+      <span id="fireCD">
+        FIRE
+      </span>
+
+      <span id="dashCD">
+        DASH
+      </span>
+
+      <span id="windCD">
+        WIND
+      </span>
+
+    </div>
+
+    <div id="gameMessage" hidden></div>
+
+  </main>
+
+</div>
+
+<script type="module" src="game.js"></script>
+
+</body>
+</html>
