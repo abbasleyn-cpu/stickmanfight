@@ -18,7 +18,6 @@
 <div id="app">
 
   <header class="topbar">
-
     <div class="logo">
       STICKMAN <span>FIGHT</span>
     </div>
@@ -26,7 +25,6 @@
     <div id="connection" class="connection">
       ● CONNECTING...
     </div>
-
   </header>
 
 
@@ -39,39 +37,89 @@
       <div class="hero">
 
         <div class="badge">
-          ONLINE 1v1
+          ONLINE 1V1 FIGHTER
         </div>
 
         <h1>
-          STICKMAN<br />
+          STICKMAN<br>
           <span>FIGHT</span>
         </h1>
 
         <p>
-          Create a room and fight your opponent online.
+          Fight a friend online or challenge the computer.
         </p>
 
       </div>
 
 
-      <div class="lobby-buttons">
+      <!-- ROUND SELECT -->
 
-        <button
-          id="createBtn"
-          class="primary-btn"
-        >
-          CREATE ROOM
-        </button>
+      <div class="option-group">
 
-        <button
-          id="showJoinBtn"
-          class="secondary-btn"
-        >
-          JOIN ROOM
-        </button>
+        <div class="option-title">
+          ROUNDS
+        </div>
+
+        <div class="option-buttons">
+
+          <button
+            id="round5Btn"
+            class="option-btn selected"
+            data-rounds="5"
+          >
+            5 ROUNDS
+          </button>
+
+          <button
+            id="round10Btn"
+            class="option-btn"
+            data-rounds="10"
+          >
+            10 ROUNDS
+          </button>
+
+        </div>
 
       </div>
 
+
+      <!-- GAME MODE -->
+
+      <div class="option-group">
+
+        <div class="option-title">
+          GAME MODE
+        </div>
+
+        <div class="lobby-buttons">
+
+          <button
+            id="createBtn"
+            class="primary-btn"
+          >
+            CREATE ONLINE ROOM
+          </button>
+
+          <button
+            id="cpuBtn"
+            class="secondary-btn"
+          >
+            VS COMPUTER
+          </button>
+
+          <button
+            id="showJoinBtn"
+            class="secondary-btn"
+          >
+            JOIN ROOM
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <!-- JOIN -->
 
       <div
         id="joinBox"
@@ -98,6 +146,8 @@
       </div>
 
 
+      <!-- ROOM -->
+
       <div
         id="roomInfo"
         class="room-info"
@@ -110,7 +160,10 @@
 
         <div class="room-code-row">
 
-          <div id="roomCode" class="room-code">
+          <div
+            id="roomCode"
+            class="room-code"
+          >
             ------
           </div>
 
@@ -123,33 +176,37 @@
       </div>
 
 
-      <div id="status" class="status">
+      <div
+        id="status"
+        class="status"
+      >
         Connecting to server...
       </div>
 
 
       <div class="controls-help">
 
-        <h3>PC CONTROLS</h3>
+        <h3>PLAYER 1</h3>
 
         <p>
-          <strong>P1</strong> —
-          A / D move,
-          W jump,
-          F punch,
-          R kick,
-          G block,
-          1 / 2 / 3 abilities
+          A / D move · W jump · F punch · R kick · G block
         </p>
 
         <p>
-          <strong>P2</strong> —
-          ← / → move,
-          ↑ jump,
-          L punch,
-          O kick,
-          K block,
-          8 / 9 / 0 abilities
+          1 Fire Fist · 2 Lightning Dash · 3 Wind Slash
+        </p>
+
+
+        <h3 class="p2-help-title">
+          PLAYER 2
+        </h3>
+
+        <p>
+          ← / → move · ↑ jump · L punch · O kick · K block
+        </p>
+
+        <p>
+          8 Fire Fist · 9 Lightning Dash · 0 Wind Slash
         </p>
 
       </div>
@@ -157,16 +214,65 @@
     </section>
 
 
-
     <!-- ================= GAME ================= -->
 
     <section id="game" hidden>
 
-      <div class="game-top">
+      <div class="scoreboard">
 
-        <div class="player-card p1-card">
+        <div class="score-player p1-score">
 
-          <div class="player-name">
+          <div class="score-name">
+            PLAYER 1
+          </div>
+
+          <div class="round-score" id="p1Score">
+            0
+          </div>
+
+        </div>
+
+
+        <div class="round-center">
+
+          <div id="roundLabel">
+            ROUND 1 / 5
+          </div>
+
+          <div id="timer">
+            60
+          </div>
+
+          <div
+            id="gameStatus"
+            class="game-status"
+          >
+            FIGHT!
+          </div>
+
+        </div>
+
+
+        <div class="score-player p2-score">
+
+          <div class="score-name">
+            PLAYER 2
+          </div>
+
+          <div class="round-score" id="p2Score">
+            0
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="hp-header">
+
+        <div class="hp-side">
+
+          <div class="hp-label">
             PLAYER 1
           </div>
 
@@ -178,32 +284,16 @@
             ></div>
           </div>
 
-          <div
-            id="p1HpText"
-            class="hp-text"
-          >
+          <div id="p1HpText">
             100 HP
           </div>
 
         </div>
 
 
-        <div class="timer-box">
+        <div class="hp-side p2-hp-side">
 
-          <div id="timer">
-            60
-          </div>
-
-          <small>
-            <span id="role">P1</span>
-          </small>
-
-        </div>
-
-
-        <div class="player-card p2-card">
-
-          <div class="player-name">
+          <div class="hp-label">
             PLAYER 2
           </div>
 
@@ -215,10 +305,7 @@
             ></div>
           </div>
 
-          <div
-            id="p2HpText"
-            class="hp-text"
-          >
+          <div id="p2HpText">
             100 HP
           </div>
 
@@ -227,9 +314,12 @@
       </div>
 
 
+      <!-- ARENA -->
+
       <div class="arena-wrap">
 
         <canvas id="gameCanvas"></canvas>
+
 
         <div
           id="winOverlay"
@@ -246,11 +336,18 @@
               YOU WIN!
             </div>
 
+            <div
+              id="roundResult"
+              class="round-result"
+            >
+              ROUND WON
+            </div>
+
             <button
               id="rematchBtn"
               class="primary-btn"
             >
-              REMATCH
+              PLAY AGAIN
             </button>
 
           </div>
@@ -260,29 +357,21 @@
       </div>
 
 
-      <div
-        id="gameStatus"
-        class="game-status"
-      >
-        FIGHT!
-      </div>
-
-
-      <!-- ================= MOBILE CONTROLS ================= -->
+      <!-- MOBILE -->
 
       <div id="mobileControls">
 
         <div class="mobile-row movement-row">
 
           <button
-            class="control-btn movement"
+            class="control-btn"
             data-input="left"
           >
             ◀
           </button>
 
           <button
-            class="control-btn movement"
+            class="control-btn"
             data-input="right"
           >
             ▶
@@ -301,21 +390,21 @@
         <div class="mobile-row action-row">
 
           <button
-            class="control-btn attack"
+            class="control-btn"
             data-action="attack"
           >
             PUNCH
           </button>
 
           <button
-            class="control-btn attack"
+            class="control-btn"
             data-action="kick"
           >
             KICK
           </button>
 
           <button
-            class="control-btn block"
+            class="control-btn"
             data-input="block"
           >
             BLOCK
@@ -327,21 +416,21 @@
         <div class="mobile-row ability-row">
 
           <button
-            class="control-btn ability fire"
+            class="control-btn ability"
             data-action="fire"
           >
             🔥 FIRE
           </button>
 
           <button
-            class="control-btn ability dash"
+            class="control-btn ability"
             data-action="dash"
           >
             ⚡ DASH
           </button>
 
           <button
-            class="control-btn ability wind"
+            class="control-btn ability"
             data-action="wind"
           >
             🌪 WIND
