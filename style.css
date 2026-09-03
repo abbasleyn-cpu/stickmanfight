@@ -5,41 +5,27 @@
 
 html,
 body {
-  width: 100%;
-  height: 100%;
   margin: 0;
-  overflow: hidden;
-
-  font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
-
-  background:
-    radial-gradient(
-      circle at 50% 20%,
-      #27334d,
-      #070910 70%
-    );
-
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  background: #070912;
   color: white;
+  font-family: Arial, Helvetica, sans-serif;
+}
 
-  user-select: none;
+body {
+  overflow-x: hidden;
 }
 
 button,
 input {
-  font-family: inherit;
+  font: inherit;
 }
 
 button {
-  border: 0;
-  color: white;
   cursor: pointer;
-}
-
-button:active {
-  transform: scale(.94);
+  user-select: none;
 }
 
 [hidden] {
@@ -47,976 +33,634 @@ button:active {
 }
 
 
-/* HEADER */
+/* ================= TOPBAR ================= */
 
 .topbar {
+  width: 100%;
   height: 64px;
 
   display: flex;
   align-items: center;
   justify-content: space-between;
 
-  padding:
-    0 24px;
+  padding: 0 24px;
+
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 
   background:
-    rgba(5, 7, 12, .8);
-
-  border-bottom:
-    1px solid rgba(255,255,255,.08);
+    linear-gradient(
+      180deg,
+      rgba(20,26,50,0.95),
+      rgba(7,9,18,0.95)
+    );
 
   position: relative;
-  z-index: 50;
+  z-index: 10;
 }
 
-.brand {
-  letter-spacing: 3px;
-  font-size: 15px;
-}
-
-.brand strong {
-  font-size: 23px;
-  margin-left: 5px;
-}
-
-#connectionStatus {
-  font-size: 10px;
+.logo {
+  font-size: 21px;
+  font-weight: 900;
   letter-spacing: 2px;
-  opacity: .65;
+}
+
+.logo span {
+  opacity: 0.55;
+}
+
+.connection {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff657c;
+}
+
+.connection.online {
+  color: #69ff9d;
 }
 
 
-/* LOBBY */
+/* ================= MAIN ================= */
 
-#lobby {
-  height:
-    calc(100% - 64px);
+main {
+  width: 100%;
+  min-height: calc(100vh - 64px);
 
-  display:
-    flex;
+  display: flex;
+  justify-content: center;
 
-  flex-direction:
-    column;
-
-  align-items:
-    center;
-
-  text-align:
-    center;
-
-  padding-top:
-    7vh;
+  padding: 30px 16px 50px;
 }
 
-.hero {
-  position: relative;
+
+/* ================= LOBBY ================= */
+
+.panel {
+  width: min(700px, 100%);
+
+  align-self: center;
+
+  padding: 40px;
+
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 24px;
+
+  background:
+    radial-gradient(
+      circle at top,
+      rgba(73,112,255,0.12),
+      transparent 50%
+    ),
+    rgba(12,16,31,0.95);
+
+  box-shadow:
+    0 30px 80px rgba(0,0,0,0.45);
+
+  text-align: center;
 }
 
-.stickmanLogo {
-  position: relative;
+.badge {
+  display: inline-block;
 
-  width: 120px;
-  height: 130px;
+  padding: 8px 14px;
 
-  margin: auto;
+  border-radius: 999px;
 
-  animation:
-    floating 2.2s ease-in-out infinite;
-}
+  background: rgba(100,180,255,0.1);
+  border: 1px solid rgba(100,180,255,0.25);
 
-@keyframes floating {
-  50% {
-    transform:
-      translateY(-10px);
-  }
-}
-
-.stickmanLogo .head {
-  position: absolute;
-
-  width: 42px;
-  height: 42px;
-
-  border:
-    5px solid white;
-
-  border-radius:
-    50%;
-
-  left: 39px;
-  top: 0;
-}
-
-.stickmanLogo .body {
-  position: absolute;
-
-  width: 6px;
-  height: 66px;
-
-  background: white;
-
-  left: 57px;
-  top: 40px;
-}
-
-.arm,
-.leg {
-  position: absolute;
-
-  height: 5px;
-
-  background: white;
-
-  transform-origin:
-    left center;
-
-  border-radius:
-    10px;
-}
-
-.arm {
-  width: 52px;
-  left: 59px;
-  top: 53px;
-}
-
-.arm1 {
-  transform:
-    rotate(25deg);
-}
-
-.arm2 {
-  transform:
-    rotate(145deg);
-}
-
-.leg {
-  width: 55px;
-  left: 58px;
-  top: 103px;
-}
-
-.leg1 {
-  transform:
-    rotate(120deg);
-}
-
-.leg2 {
-  transform:
-    rotate(60deg);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
 }
 
 .hero h1 {
-  margin:
-    20px 0 0;
+  margin: 20px 0 12px;
 
-  font-size:
-    clamp(38px, 8vw, 75px);
+  font-size: clamp(50px, 10vw, 95px);
 
-  line-height:
-    .9;
+  line-height: 0.86;
 
-  letter-spacing:
-    5px;
+  font-weight: 1000;
+  letter-spacing: -4px;
 }
 
 .hero h1 span {
-  display: block;
-
-  background:
-    linear-gradient(
-      90deg,
-      #fff,
-      #9bbcff
-    );
-
-  -webkit-background-clip:
-    text;
-
-  background-clip:
-    text;
-
-  color:
-    transparent;
+  opacity: 0.45;
 }
 
 .hero p {
-  margin-top:
-    15px;
+  margin: 0 auto 28px;
 
-  letter-spacing:
-    6px;
+  max-width: 500px;
 
-  font-size:
-    11px;
+  color: rgba(255,255,255,0.65);
 
-  opacity:
-    .5;
+  font-size: 15px;
 }
 
 
-/* LOBBY CARD */
+/* ================= BUTTONS ================= */
 
-.lobbyCard {
-  width:
-    min(420px, 92%);
-
-  margin-top:
-    30px;
-
-  padding:
-    24px;
-
-  border-radius:
-    22px;
-
-  background:
-    rgba(255,255,255,.055);
-
-  border:
-    1px solid
-    rgba(255,255,255,.1);
-
-  box-shadow:
-    0 25px 80px
-    rgba(0,0,0,.3);
-
-  backdrop-filter:
-    blur(20px);
+.lobby-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
 }
 
-.mainButton,
-.secondaryButton {
-  width: 100%;
+.primary-btn,
+.secondary-btn {
+  min-height: 54px;
 
-  padding:
-    16px;
+  padding: 0 24px;
 
-  margin:
-    6px 0;
+  border-radius: 12px;
 
-  border-radius:
-    12px;
-
-  font-size:
-    13px;
-
-  font-weight:
-    900;
-
-  letter-spacing:
-    2px;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 1px;
 
   transition:
-    .15s;
+    transform 0.12s ease,
+    opacity 0.12s ease;
 }
 
-.mainButton {
-  background:
-    linear-gradient(
-      135deg,
-      #5879ff,
-      #805dff
-    );
-
-  box-shadow:
-    0 10px 25px
-    rgba(82,103,255,.25);
+.primary-btn {
+  border: 0;
+  background: #ffffff;
+  color: #080a12;
 }
 
-.secondaryButton {
-  background:
-    rgba(255,255,255,.08);
+.secondary-btn {
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: white;
 }
 
-.mainButton:hover,
-.secondaryButton:hover {
-  transform:
-    translateY(-2px);
+.primary-btn:hover,
+.secondary-btn:hover {
+  transform: translateY(-2px);
 }
 
-#joinPanel {
-  display:
-    flex;
-
-  gap:
-    8px;
-
-  margin-top:
-    5px;
-}
-
-#roomInput {
-  min-width:
-    0;
-
-  flex:
-    1;
-
-  border:
-    0;
-
-  outline:
-    none;
-
-  border-radius:
-    12px;
-
-  padding:
-    15px;
-
-  text-align:
-    center;
-
-  font-weight:
-    900;
-
-  font-size:
-    18px;
-
-  letter-spacing:
-    6px;
-
-  background:
-    white;
-
-  color:
-    #111;
-}
-
-#joinPanel .mainButton {
-  width:
-    100px;
-}
-
-#roomInfo {
-  margin-top:
-    15px;
-
-  font-size:
-    30px;
-
-  font-weight:
-    900;
-
-  letter-spacing:
-    8px;
-}
-
-#lobbyStatus {
-  margin-top:
-    10px;
-
-  font-size:
-    12px;
-
-  opacity:
-    .5;
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 
-/* FEATURES */
+/* ================= JOIN ================= */
 
-.featureRow {
-  display:
-    flex;
+.join-box {
+  display: flex;
+  gap: 10px;
 
-  gap:
-    8px;
-
-  margin-top:
-    25px;
-
-  flex-wrap:
-    wrap;
-
-  justify-content:
-    center;
+  margin-top: 16px;
 }
 
-.feature {
-  padding:
-    8px 12px;
+.join-box input {
+  flex: 1;
 
-  border-radius:
-    10px;
+  min-width: 0;
 
-  background:
-    rgba(255,255,255,.045);
+  height: 54px;
 
-  font-size:
-    9px;
+  padding: 0 18px;
 
-  letter-spacing:
-    1px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
 
-  opacity:
-    .65;
+  background: rgba(0,0,0,0.3);
+
+  color: white;
+
+  text-align: center;
+
+  text-transform: uppercase;
+
+  outline: none;
+
+  letter-spacing: 4px;
+  font-weight: 900;
 }
 
-.feature b {
-  margin-right:
-    4px;
+.join-box input:focus {
+  border-color: rgba(255,255,255,0.4);
 }
 
 
-/* GAME */
+/* ================= ROOM ================= */
+
+.room-info {
+  margin-top: 22px;
+
+  padding: 20px;
+
+  border-radius: 18px;
+
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.room-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  opacity: 0.55;
+}
+
+.room-code-row {
+  display: flex;
+
+  justify-content: center;
+  align-items: center;
+
+  gap: 12px;
+
+  margin-top: 10px;
+}
+
+.room-code {
+  font-size: 34px;
+  font-weight: 1000;
+
+  letter-spacing: 8px;
+}
+
+.room-code-row button {
+  border: 1px solid rgba(255,255,255,0.15);
+
+  background: rgba(255,255,255,0.06);
+
+  color: white;
+
+  padding: 9px 12px;
+
+  border-radius: 8px;
+
+  font-size: 11px;
+  font-weight: 800;
+}
+
+
+/* ================= STATUS ================= */
+
+.status {
+  margin-top: 20px;
+
+  color: rgba(255,255,255,0.7);
+
+  font-size: 14px;
+}
+
+
+/* ================= HELP ================= */
+
+.controls-help {
+  margin-top: 32px;
+
+  padding-top: 22px;
+
+  border-top: 1px solid rgba(255,255,255,0.08);
+
+  text-align: left;
+}
+
+.controls-help h3 {
+  margin: 0 0 12px;
+
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.controls-help p {
+  margin: 8px 0;
+
+  font-size: 12px;
+
+  color: rgba(255,255,255,0.55);
+}
+
+
+/* ================= GAME ================= */
 
 #game {
-  position:
-    relative;
-
-  width:
-    100%;
-
-  height:
-    calc(100% - 64px);
+  width: 100%;
+  max-width: 1400px;
 }
 
-#arena {
-  position:
-    absolute;
+.game-top {
+  width: min(1200px, 96vw);
 
-  inset:
-    0;
+  margin: 0 auto 12px;
 
-  width:
-    100%;
+  display: grid;
 
-  height:
-    100%;
+  grid-template-columns: 1fr 100px 1fr;
 
-  display:
-    block;
+  align-items: center;
+
+  gap: 15px;
 }
 
-
-/* HUD */
-
-.hud {
-  position:
-    absolute;
-
-  z-index:
-    10;
-
-  top:
-    14px;
-
-  left:
-    3%;
-
-  right:
-    3%;
-
-  display:
-    grid;
-
-  grid-template-columns:
-    1fr 70px 1fr;
-
-  gap:
-    15px;
-
-  align-items:
-    center;
+.player-card {
+  min-width: 0;
 }
 
-.fighterTitle {
-  font-size:
-    10px;
-
-  letter-spacing:
-    2px;
-
-  margin-bottom:
-    5px;
+.p2-card {
+  text-align: right;
 }
 
-.fighter2 .fighterTitle {
-  text-align:
-    right;
+.player-name {
+  margin-bottom: 5px;
+
+  font-size: 11px;
+
+  font-weight: 900;
+
+  letter-spacing: 2px;
+
+  opacity: 0.6;
 }
 
-.healthBar {
-  height:
-    14px;
+.hp-bar {
+  width: 100%;
 
-  background:
-    rgba(0,0,0,.55);
+  height: 14px;
 
-  border:
-    1px solid
-    rgba(255,255,255,.18);
+  overflow: hidden;
 
-  border-radius:
-    20px;
+  border-radius: 999px;
 
-  overflow:
-    hidden;
+  background: rgba(255,255,255,0.08);
 }
 
-.healthBar div {
-  height:
-    100%;
+.hp-fill {
+  height: 100%;
 
-  width:
-    100%;
-
-  background:
-    linear-gradient(
-      90deg,
-      #35dd77,
-      #b7ff69
-    );
-
-  transition:
-    width .15s;
+  transition: width 0.12s linear;
 }
 
-#hp2 {
-  margin-left:
-    auto;
-
-  background:
-    linear-gradient(
-      90deg,
-      #ff4d78,
-      #ff9e69
-    );
+.p1-fill {
+  background: #65a8ff;
 }
 
-.roundTimer {
-  font-size:
-    27px;
-
-  font-weight:
-    900;
-
-  text-align:
-    center;
+.p2-fill {
+  background: #ff657c;
 }
 
-#roomCodeDisplay {
-  position:
-    absolute;
+.hp-text {
+  margin-top: 4px;
 
-  z-index:
-    10;
+  font-size: 10px;
 
-  top:
-    65px;
+  opacity: 0.6;
+}
 
-  left:
-    50%;
+.timer-box {
+  text-align: center;
+}
 
-  transform:
-    translateX(-50%);
+#timer {
+  font-size: 34px;
 
-  font-size:
-    9px;
+  font-weight: 1000;
 
-  letter-spacing:
-    3px;
+  line-height: 1;
+}
 
-  opacity:
-    .35;
+.timer-box small {
+  font-size: 10px;
+
+  opacity: 0.5;
+
+  letter-spacing: 2px;
 }
 
 
-/* PC CONTROLS */
+/* ================= ARENA ================= */
 
-#pcControls {
-  position:
-    absolute;
+.arena-wrap {
+  position: relative;
 
-  z-index:
-    10;
+  width: min(1200px, 96vw);
 
-  top:
-    70px;
+  aspect-ratio: 2 / 1;
 
-  left:
-    18px;
+  margin: 0 auto;
 
-  padding:
-    8px 10px;
+  overflow: hidden;
 
-  border-radius:
-    8px;
+  border-radius: 18px;
 
-  background:
-    rgba(0,0,0,.35);
+  border: 2px solid rgba(255,255,255,0.12);
 
-  font-size:
-    9px;
+  background: #080b16;
 
-  opacity:
-    .45;
+  box-shadow:
+    0 25px 80px rgba(0,0,0,0.5);
+}
+
+#gameCanvas {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  min-height: 300px;
+
+  touch-action: none;
 }
 
 
-/* MOBILE */
+/* ================= WIN ================= */
+
+.win-overlay {
+  position: absolute;
+
+  inset: 0;
+
+  display: grid;
+
+  place-items: center;
+
+  background: rgba(5,7,15,0.72);
+
+  backdrop-filter: blur(6px);
+}
+
+.win-box {
+  text-align: center;
+
+  padding: 30px;
+}
+
+.winner-text {
+  font-size: clamp(40px, 8vw, 85px);
+
+  line-height: 1;
+
+  font-weight: 1000;
+
+  margin-bottom: 24px;
+}
+
+
+/* ================= STATUS ================= */
+
+.game-status {
+  text-align: center;
+
+  height: 30px;
+
+  padding-top: 8px;
+
+  font-size: 11px;
+
+  letter-spacing: 2px;
+
+  font-weight: 900;
+
+  opacity: 0.6;
+}
+
+
+/* ================= MOBILE ================= */
 
 #mobileControls {
-  position:
-    absolute;
+  display: none;
 
-  z-index:
-    20;
+  width: min(900px, 96vw);
 
-  left:
-    0;
+  margin: 10px auto 0;
 
-  right:
-    0;
-
-  bottom:
-    max(12px, env(safe-area-inset-bottom));
-
-  padding:
-    0 12px;
-
-  display:
-    flex;
-
-  align-items:
-    flex-end;
-
-  justify-content:
-    space-between;
-
-  pointer-events:
-    none;
+  gap: 8px;
 }
 
-.leftControls,
-.rightControls {
-  display:
-    flex;
+.mobile-row {
+  display: grid;
 
-  align-items:
-    center;
-
-  gap:
-    7px;
-
-  pointer-events:
-    auto;
+  gap: 8px;
 }
 
-.controlButton,
-.actionButton,
-.abilityButton {
-  border-radius:
-    50%;
-
-  background:
-    rgba(12,16,27,.82);
-
-  border:
-    1px solid
-    rgba(255,255,255,.18);
-
-  box-shadow:
-    0 8px 25px
-    rgba(0,0,0,.3);
-
-  backdrop-filter:
-    blur(8px);
-
-  touch-action:
-    none;
-
-  display:
-    grid;
-
-  place-items:
-    center;
-
-  font-size:
-    17px;
+.movement-row {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
-.controlButton {
-  width:
-    55px;
-
-  height:
-    55px;
+.action-row {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
-.actionButton {
-  width:
-    52px;
-
-  height:
-    52px;
+.ability-row {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
-.abilityButton {
-  width:
-    52px;
+.control-btn {
+  min-height: 58px;
 
-  height:
-    52px;
+  border-radius: 14px;
+
+  border: 1px solid rgba(255,255,255,0.12);
+
+  background: rgba(255,255,255,0.06);
+
+  color: white;
+
+  font-weight: 900;
+
+  touch-action: none;
+}
+
+.control-btn.pressed {
+  transform: scale(0.95);
+
+  background: rgba(255,255,255,0.18);
+}
+
+.control-btn.cooldown {
+  opacity: 0.4;
 }
 
 
-/* ABILITY BAR */
+/* ================= RESPONSIVE ================= */
 
-#abilityStatus {
-  position:
-    absolute;
+@media (pointer: coarse),
+       (max-width: 900px) {
 
-  z-index:
-    15;
-
-  bottom:
-    80px;
-
-  right:
-    18px;
-
-  display:
-    flex;
-
-  gap:
-    5px;
-
-  font-size:
-    8px;
-}
-
-#abilityStatus span {
-  padding:
-    6px 8px;
-
-  border-radius:
-    7px;
-
-  background:
-    rgba(0,0,0,.45);
-}
-
-
-/* GAME OVER */
-
-#gameOverlay {
-  position:
-    absolute;
-
-  inset:
-    0;
-
-  z-index:
-    100;
-
-  display:
-    grid;
-
-  place-items:
-    center;
-
-  background:
-    rgba(0,0,0,.65);
-
-  backdrop-filter:
-    blur(8px);
-}
-
-.gameOverCard {
-  width:
-    min(400px, 88%);
-
-  padding:
-    35px;
-
-  text-align:
-    center;
-
-  border-radius:
-    24px;
-
-  background:
-    rgba(20,25,40,.95);
-
-  border:
-    1px solid
-    rgba(255,255,255,.12);
-
-  box-shadow:
-    0 30px 100px
-    rgba(0,0,0,.5);
-}
-
-#winnerText {
-  font-size:
-    clamp(38px, 9vw, 65px);
-
-  font-weight:
-    900;
-
-  letter-spacing:
-    3px;
-}
-
-#roundText {
-  margin:
-    8px 0 20px;
-
-  font-size:
-    11px;
-
-  letter-spacing:
-    3px;
-
-  opacity:
-    .45;
-}
-
-
-/* MOBILE */
-
-@media (max-width: 800px) {
-
-  .topbar {
-    height:
-      55px;
-
-    padding:
-      0 12px;
+  #mobileControls {
+    display: grid;
   }
 
-  #lobby {
-    height:
-      calc(100% - 55px);
-
-    padding-top:
-      3vh;
+  main {
+    padding-top: 15px;
   }
 
-  #game {
-    height:
-      calc(100% - 55px);
+  .panel {
+    padding: 26px 18px;
   }
 
   .hero h1 {
-    font-size:
-      39px;
+    letter-spacing: -2px;
   }
 
-  .lobbyCard {
-    margin-top:
-      18px;
+  .game-top {
+    grid-template-columns: 1fr 65px 1fr;
 
-    padding:
-      18px;
+    width: 96vw;
+
+    gap: 8px;
   }
 
-  .featureRow {
-    margin-top:
-      10px;
+  #timer {
+    font-size: 26px;
   }
 
-  #pcControls {
-    display:
-      none;
+  .arena-wrap {
+    width: 96vw;
   }
 
-  .hud {
-    top:
-      8px;
-
-    grid-template-columns:
-      1fr 55px 1fr;
-
-    gap:
-      7px;
+  .player-name {
+    font-size: 9px;
   }
 
-  .roundTimer {
-    font-size:
-      22px;
+  .hp-bar {
+    height: 11px;
   }
 
-  .fighterTitle {
-    font-size:
-      8px;
+  .lobby-buttons {
+    flex-direction: column;
   }
 
-  .healthBar {
-    height:
-      11px;
+  .join-box {
+    flex-direction: column;
   }
 
-  #abilityStatus {
-    bottom:
-      75px;
-
-    right:
-      8px;
+  .room-code {
+    font-size: 27px;
+    letter-spacing: 5px;
   }
 
-  #mobileControls {
-    padding:
-      0 7px;
-  }
-
-  .leftControls,
-  .rightControls {
-    gap:
-      4px;
-  }
-
-  .controlButton {
-    width:
-      48px;
-
-    height:
-      48px;
-  }
-
-  .actionButton,
-  .abilityButton {
-    width:
-      44px;
-
-    height:
-      44px;
-
-    font-size:
-      15px;
-  }
 }
+
+
+/* ================= VERY SMALL ================= */
 
 @media (max-width: 430px) {
 
-  .controlButton {
-    width:
-      43px;
-
-    height:
-      43px;
+  .topbar {
+    padding: 0 14px;
   }
 
-  .actionButton,
-  .abilityButton {
-    width:
-      40px;
-
-    height:
-      40px;
+  .logo {
+    font-size: 17px;
   }
 
-  #mobileControls {
-    padding:
-      0 4px;
+  .connection {
+    font-size: 9px;
   }
 
-  .leftControls,
-  .rightControls {
-    gap:
-      3px;
+  .control-btn {
+    min-height: 52px;
+
+    font-size: 11px;
   }
+
 }
